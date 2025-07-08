@@ -42,12 +42,36 @@ pub extern "C" fn hello_rust_cargo_main() {
     let pretty_json_str = serde_json::to_string_pretty(&alice).unwrap();
     println!("Pretty JSON:\n{}", pretty_json_str);
 
+    std::thread::spawn(|| loop {
+        println!("Hello world from thread! {:?}", std::thread::current().id());
+        std::thread::sleep(std::time::Duration::from_secs(3))
+    });
+
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap()
         .block_on(async {
-            println!("Hello world from tokio!");
+            tokio::join!(
+                async {
+                    loop {
+                        println!(
+                            "Hello world from tokio 1! {:?}",
+                            std::thread::current().id()
+                        );
+                        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                    }
+                },
+                async {
+                    loop {
+                        println!(
+                            "Hello world from tokio 2! {:?}",
+                            std::thread::current().id()
+                        );
+                        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                    }
+                }
+            );
         });
 
     loop {
