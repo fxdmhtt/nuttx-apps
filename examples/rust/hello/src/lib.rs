@@ -1,3 +1,5 @@
+#![allow(clippy::uninlined_format_args)]
+
 extern crate serde;
 extern crate serde_json;
 
@@ -9,11 +11,27 @@ struct Person {
     age: u8,
 }
 
-// Function hello_rust_cargo without manglng
-#[no_mangle]
-pub extern "C" fn hello_rust_cargo_main() {
-    // Print hello world to stdout
+mod delay;
 
+async fn delay(secs: u64) {
+    delay::Delay::new(std::time::Duration::from_secs(secs)).await;
+}
+
+async fn task_template(id: u64) {
+    println!("[Coroutine {id}] Task A Start");
+    delay(1).await;
+    println!("[Coroutine {id}] Task A Stop");
+
+    delay(1).await;
+
+    println!("[Coroutine {id}] Task B Start");
+    delay(1).await;
+    println!("[Coroutine {id}] Task B Stop");
+}
+
+static EXECUTOR: async_executor::StaticExecutor = async_executor::StaticExecutor::new();
+
+fn demo_serde() {
     let john = Person {
         name: "John".to_string(),
         age: 30,
@@ -41,12 +59,18 @@ pub extern "C" fn hello_rust_cargo_main() {
 
     let pretty_json_str = serde_json::to_string_pretty(&alice).unwrap();
     println!("Pretty JSON:\n{}", pretty_json_str);
+}
 
-    std::thread::spawn(|| loop {
-        println!("Hello world from thread! {:?}", std::thread::current().id());
-        std::thread::sleep(std::time::Duration::from_secs(3))
-    });
+fn demo_thread(secs: u64) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        for _ in 0..(secs / 5) {
+            println!("Hello world from thread! {:?}", std::thread::current().id());
+            std::thread::sleep(std::time::Duration::from_secs(5))
+        }
+    })
+}
 
+fn demo_tokio(secs: u64) {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -54,7 +78,7 @@ pub extern "C" fn hello_rust_cargo_main() {
         .block_on(async {
             tokio::join!(
                 async {
-                    loop {
+                    for _ in 0..(secs / 2) {
                         println!(
                             "Hello world from tokio 1! {:?}",
                             std::thread::current().id()
@@ -63,18 +87,59 @@ pub extern "C" fn hello_rust_cargo_main() {
                     }
                 },
                 async {
-                    loop {
+                    for _ in 0..(secs / 3) {
                         println!(
                             "Hello world from tokio 2! {:?}",
                             std::thread::current().id()
                         );
-                        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
                     }
                 }
             );
         });
+}
 
-    loop {
-        // Do nothing
+fn demo_async_executor() {
+    let task1 = EXECUTOR.spawn(async {
+        println!("[Coroutine 1] Begin");
+        task_template(1).await;
+        println!("[Coroutine 1] End");
+    });
+
+    let task2 = EXECUTOR.spawn(async {
+        println!("[Coroutine 2] Begin");
+        task_template(2).await;
+        println!("[Coroutine 2] End");
+    });
+
+    let task3 = EXECUTOR.spawn(async {
+        println!("[Coroutine 3] Begin");
+
+        let task1 = EXECUTOR.spawn(async { task_template(3).await });
+        let task2 = EXECUTOR.spawn(async { task_template(3).await });
+
+        futures::future::join(task1, task2).await;
+        println!("[Coroutine 3] End");
+    });
+
+    let tasks = [task1, task2, task3];
+    while !tasks.iter().all(|task| task.is_finished()) {
+        while EXECUTOR.try_tick() {}
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
+}
+
+// Function hello_rust_cargo without manglng
+// Bug: Cannot run twice because of random exceptions in tokio and infinite recursion stack overflow
+#[no_mangle]
+pub extern "C" fn hello_rust_cargo_main() {
+    demo_serde();
+
+    {
+        let handle = demo_thread(30);
+        demo_tokio(30);
+        handle.join().unwrap();
+    }
+
+    demo_async_executor();
 }
