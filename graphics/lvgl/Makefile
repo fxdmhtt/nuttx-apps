@@ -56,10 +56,10 @@ endif
 
 WD := ${shell echo $(CURDIR) | sed -e 's/ /\\ /g'}
 
-CONFIG_GRAPH_LVGL_URL ?= "https://github.com/lvgl/lvgl/archive/refs/tags"
+CONFIG_GRAPH_LVGL_URL ?= "https://github.com/open-vela/apps_graphics_lvgl/archive/refs/heads"
 
-LVGL_VERSION = 9.2.1
-LVGL_TARBALL = v$(LVGL_VERSION).zip
+LVGL_VERSION = dev
+LVGL_TARBALL = $(LVGL_VERSION).zip
 
 LVGL_UNPACKNAME = lvgl
 UNPACK ?= unzip -o $(if $(V),,-q)
@@ -75,7 +75,7 @@ $(LVGL_TARBALL):
 $(LVGL_UNPACKNAME): $(LVGL_TARBALL)
 	$(ECHO_BEGIN)"Unpacking: $(LVGL_TARBALL) -> $(LVGL_UNPACKNAME)"
 	$(Q) $(UNPACK) $(LVGL_TARBALL)
-	$(Q) mv	lvgl-$(LVGL_VERSION) $(LVGL_UNPACKNAME)
+	$(Q) mv	apps_graphics_lvgl-dev $(LVGL_UNPACKNAME)
 	$(Q) touch $(LVGL_UNPACKNAME)
 	$(ECHO_END)
 
