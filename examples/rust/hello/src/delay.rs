@@ -9,9 +9,11 @@ use std::{
 
 pub struct Delay {
     state: Arc<Mutex<State>>,
+    duration: Duration,
 }
 
 // Shared state between the future and the waiting thread
+#[derive(Default)]
 struct State {
     // Whether or not the sleep time has elapsed
     completed: bool,
@@ -26,6 +28,22 @@ struct State {
 impl Future for Delay {
     type Output = ();
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // Spawn the new thread
+        let state = self.state.clone();
+        let duration = self.duration;
+        thread::spawn(move || {
+            thread::sleep(duration);
+
+            // Completed
+            let mut state = state.lock().unwrap();
+            // Signal that the timer has completed and wake up the last
+            // task on which the future was polled, if one exists.
+            state.completed = true;
+            if let Some(waker) = state.waker.take() {
+                waker.wake()
+            }
+        });
+
         // Look at the shared state to see if the timer has already completed.
         let mut state = self.state.lock().unwrap();
         if state.completed {
@@ -52,26 +70,9 @@ impl Future for Delay {
 impl Delay {
     // Create a new `Delay` which will complete after the provided timeout.
     pub fn new(duration: Duration) -> Self {
-        let state = Arc::new(Mutex::new(State {
-            completed: false,
-            waker: None,
-        }));
-
-        // Spawn the new thread
-        // Bug: Timing directly after new but before await
-        let thread_state = state.clone();
-        thread::spawn(move || {
-            thread::sleep(duration);
-
-            let mut state = thread_state.lock().unwrap();
-            // Signal that the timer has completed and wake up the last
-            // task on which the future was polled, if one exists.
-            state.completed = true;
-            if let Some(waker) = state.waker.take() {
-                waker.wake()
-            }
-        });
-
-        Delay { state }
+        Delay {
+            state: Arc::new(Mutex::new(State::default())),
+            duration,
+        }
     }
 }
