@@ -1,11 +1,13 @@
 use std::{
+    ffi::c_void,
     future::Future,
     pin::Pin,
     sync::{Arc, Mutex},
     task::{Context, Poll, Waker},
-    thread,
     time::Duration,
 };
+
+use crate::{binding::libuv::timer::UvTimer, UI_LOOP};
 
 pub struct Delay {
     state: Arc<Mutex<State>>,
@@ -23,25 +25,22 @@ struct State {
     // `Delay`'s task to wake up, see that `completed = true`, and
     // move forward.
     waker: Option<Waker>,
+
+    // Wrapper for libuv timer
+    timer_handle: Option<UvTimer>,
 }
 
 impl Future for Delay {
     type Output = ();
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // Spawn the new thread
-        let state = self.state.clone();
-        let duration = self.duration;
-        thread::spawn(move || {
-            thread::sleep(duration);
-
-            // Completed
-            let mut state = state.lock().unwrap();
-            // Signal that the timer has completed and wake up the last
-            // task on which the future was polled, if one exists.
-            state.completed = true;
-            if let Some(waker) = state.waker.take() {
-                waker.wake()
-            }
+        // Working with uv_timer_t
+        self.state.lock().unwrap().timer_handle.get_or_insert_with(|| {
+            let uv_timer = UvTimer::new(unsafe { UI_LOOP });
+            uv_timer.start(
+                self.duration.as_millis() as u64,
+                Arc::into_raw(self.state.clone()) as *mut c_void,
+            );
+            uv_timer
         });
 
         // Look at the shared state to see if the timer has already completed.
@@ -74,5 +73,26 @@ impl Delay {
             state: Arc::new(Mutex::new(State::default())),
             duration,
         }
+    }
+}
+
+pub async fn delay(secs: u64) {
+    Delay::new(std::time::Duration::from_secs(secs)).await;
+}
+
+#[no_mangle]
+pub extern "C" fn rust_delay_wake(state: *mut c_void) {
+    let state = unsafe { Arc::from_raw(state as *const Mutex<State>) };
+
+    let mut state = state.lock().unwrap();
+    if let Some(timer_handle) = state.timer_handle.take() {
+        drop(timer_handle);
+    }
+
+    // Signal that the timer has completed and wake up the last
+    // task on which the future was polled, if one exists.
+    state.completed = true;
+    if let Some(waker) = state.waker.take() {
+        waker.wake()
     }
 }

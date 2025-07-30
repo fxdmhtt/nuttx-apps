@@ -3,6 +3,9 @@
 extern crate serde;
 extern crate serde_json;
 
+use crate::delay::delay;
+use std::{ffi::c_void, ptr::null_mut};
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -11,11 +14,12 @@ struct Person {
     age: u8,
 }
 
+mod binding;
 mod delay;
+mod executor;
 
-async fn delay(secs: u64) {
-    delay::Delay::new(std::time::Duration::from_secs(secs)).await;
-}
+static EXECUTOR: executor::PriorityExecutor = executor::PriorityExecutor::new();
+pub static mut UI_LOOP: *mut c_void = null_mut();
 
 async fn task_template(id: u64) {
     println!("[Coroutine {id}] Task A Start");
@@ -28,8 +32,6 @@ async fn task_template(id: u64) {
     delay(1).await;
     println!("[Coroutine {id}] Task B Stop");
 }
-
-static EXECUTOR: async_executor::StaticExecutor = async_executor::StaticExecutor::new();
 
 fn demo_serde() {
     let john = Person {
@@ -99,7 +101,16 @@ fn demo_tokio(secs: u64) {
         });
 }
 
-fn demo_async_executor() {
+#[no_mangle]
+pub extern "C" fn rust_executor_tick() -> bool {
+    EXECUTOR.poll_all();
+    EXECUTOR.try_tick()
+}
+
+#[no_mangle]
+pub extern "C" fn demo_async_executor(ui_loop: *mut c_void) {
+    unsafe { UI_LOOP = ui_loop }
+
     let task1 = EXECUTOR.spawn(async {
         println!("[Coroutine 1] Begin");
         task_template(1).await;
@@ -123,10 +134,8 @@ fn demo_async_executor() {
     });
 
     let tasks = [task1, task2, task3];
-    while !tasks.iter().all(|task| task.is_finished()) {
-        while EXECUTOR.try_tick() {}
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
+    tasks.into_iter().for_each(|task| task.detach());
+    EXECUTOR.poll_all();
 }
 
 // Function hello_rust_cargo without manglng
@@ -140,6 +149,4 @@ pub extern "C" fn hello_rust_cargo_main() {
         demo_tokio(30);
         handle.join().unwrap();
     }
-
-    demo_async_executor();
 }
