@@ -1,6 +1,12 @@
+#![allow(non_camel_case_types)]
+
 use std::ffi::c_void;
 
-pub struct UvTimer(*mut c_void);
+use super::uv_loop_t;
+
+type uv_timer_t = c_void;
+
+pub struct UvTimer(*mut uv_timer_t);
 
 impl Drop for UvTimer {
     fn drop(&mut self) {
@@ -9,7 +15,7 @@ impl Drop for UvTimer {
 }
 
 impl UvTimer {
-    pub fn new(ui_loop: *mut c_void) -> Self {
+    pub fn new(ui_loop: *mut uv_loop_t) -> Self {
         Self(unsafe { uv_timer_new(ui_loop) })
     }
 
@@ -19,7 +25,7 @@ impl UvTimer {
 }
 
 extern "C" {
-    fn uv_timer_new(ui_loop: *mut c_void) -> *mut c_void;
-    fn uv_timer_drop(handle: *mut c_void);
-    fn uv_timer_pending(handle: *mut c_void, timeout: u64, state: *mut c_void);
+    fn uv_timer_new(ui_loop: *mut uv_loop_t) -> *mut uv_timer_t;
+    fn uv_timer_drop(handle: *mut uv_timer_t);
+    fn uv_timer_pending(handle: *mut uv_timer_t, timeout: u64, state: *mut c_void);
 }
