@@ -102,9 +102,8 @@ fn demo_tokio(secs: u64) {
 }
 
 #[no_mangle]
-pub extern "C" fn rust_executor_tick() -> bool {
-    EXECUTOR.poll_all();
-    EXECUTOR.try_tick()
+pub extern "C" fn rust_executor_drive() {
+    EXECUTOR.try_tick_all()
 }
 
 #[no_mangle]
@@ -135,7 +134,7 @@ pub extern "C" fn demo_async_executor(ui_loop: *mut c_void) {
 
     let tasks = [task1, task2, task3];
     tasks.into_iter().for_each(|task| task.detach());
-    EXECUTOR.poll_all();
+    EXECUTOR.try_tick_all();
 }
 
 // Function hello_rust_cargo without manglng

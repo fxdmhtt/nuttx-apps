@@ -69,22 +69,35 @@ impl PriorityExecutor {
         self.executor.try_tick()
     }
 
-    /// Polls all currently pending or ready tasks once without blocking.
+    /// Attempts to run up to `num` ready tasks by polling them once.
     ///
-    /// This method performs a single non-blocking pass over the internal task queue,
-    /// polling each task that is ready to make progress. It does **not** wait for I/O,
-    /// timers, or other external events, and will return immediately after all
-    /// currently scheduled tasks have been polled once.
+    /// Stops early if no more tasks are available.
     ///
-    /// This is useful in scenarios where you want to drive the executor forward
-    /// without blocking the current thread or waiting for new events.
+    /// # Examples
     ///
-    /// # Behavior
+    /// ```
+    /// use PriorityExecutor;
     ///
-    /// - Only tasks that are currently ready or scheduled will be polled.
-    /// - Tasks that are not ready (e.g., waiting on I/O or timers) are skipped.
-    /// - Wakers may re-schedule tasks, but those will not be polled again
-    ///   in the same `poll_all()` call.
+    /// static EXECUTOR: PriorityExecutor = PriorityExecutor::new();
+    ///
+    /// let task = EXECUTOR.spawn(async {
+    ///     println!("Hello world");
+    /// });
+    ///
+    /// EXECUTOR.try_tick_n(10); // Try to run up to 10 tasks
+    /// ```
+    #[allow(dead_code)]
+    pub fn try_tick_n(&self, num: u32) {
+        for _ in 0..num {
+            if !self.try_tick() {
+                break;
+            }
+        }
+    }
+
+    /// Non-blocking pass over all ready tasks, polling each once.
+    ///
+    /// Tasks that become ready during this call are deferred to the next tick.
     ///
     /// # Example
     ///
@@ -97,16 +110,9 @@ impl PriorityExecutor {
     ///     println!("Hello world");
     /// });
     ///
-    /// EXECUTOR.poll_all(); // Progress all ready tasks one step
+    /// EXECUTOR.try_tick_all(); // Progress all ready tasks one step
     /// ```
-    ///
-    /// # See also
-    /// - [`spawn`] to add a task to the executor.
-    ///
-    /// # Note
-    /// This method does not guarantee that all tasks will complete; it merely
-    /// polls them once if they're ready.
-    pub fn poll_all(&self) {
+    pub fn try_tick_all(&self) {
         while self.try_tick() {}
     }
 }

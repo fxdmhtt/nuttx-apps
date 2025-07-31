@@ -68,23 +68,17 @@
  ****************************************************************************/
 
 #ifdef CONFIG_LV_USE_NUTTX_LIBUV
-static uv_idle_t idle;
-static void _rust_executor_tick(uv_idle_t *handle)
-{
-  bool rust_executor_tick(void);
-  if (!rust_executor_tick())
-    uv_idle_stop(&idle);
-}
-
 static uv_async_t async;
-static void _rust_executor_pending(uv_async_t *handle)
+
+static void _rust_executor_drive(uv_async_t *handle)
 {
-  uv_idle_start(&idle, _rust_executor_tick);
+  void rust_executor_drive(void);
+  rust_executor_drive();
 }
 
-void rust_executor_pending(void)
+int rust_executor_wake(void)
 {
-  uv_async_send(&async);
+  return uv_async_send(&async);
 }
 
 static void lv_nuttx_uv_loop(uv_loop_t *loop, lv_nuttx_result_t *result)
@@ -102,8 +96,7 @@ static void lv_nuttx_uv_loop(uv_loop_t *loop, lv_nuttx_result_t *result)
   uv_info.uindev = result->utouch_indev;
 #endif
 
-  uv_idle_init(loop, &idle);
-  uv_async_init(loop, &async, _rust_executor_pending);
+  uv_async_init(loop, &async, _rust_executor_drive);
   void demo_async_executor(uv_loop_t *);
   demo_async_executor(loop);
 

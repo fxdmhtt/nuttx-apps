@@ -16,12 +16,12 @@ impl UvTimer {
     }
 
     pub fn start(&self, timeout: u64, state: *mut c_void) {
-        unsafe { rs_delay_start(self.0, timeout, state) }
+        unsafe { uv_timer_pending(self.0, timeout, state) }
     }
 }
 
-unsafe extern "C" {
-    pub unsafe fn uv_timer_new(ui_loop: *mut c_void) -> *mut c_void;
-    pub unsafe fn uv_timer_drop(handle: *mut c_void);
-    pub unsafe fn rs_delay_start(handle: *mut c_void, timeout: u64, state: *mut c_void);
+extern "C" {
+    fn uv_timer_new(ui_loop: *mut c_void) -> *mut c_void;
+    fn uv_timer_drop(handle: *mut c_void);
+    fn uv_timer_pending(handle: *mut c_void, timeout: u64, state: *mut c_void);
 }
