@@ -18,8 +18,13 @@ mod binding;
 mod delay;
 mod executor;
 
-static EXECUTOR: executor::PriorityExecutor = executor::PriorityExecutor::new();
+static mut EXECUTOR: executor::PriorityExecutor = executor::PriorityExecutor::new();
 pub static mut UI_LOOP: *mut c_void = null_mut();
+
+#[allow(static_mut_refs)]
+fn executor() -> &'static mut executor::PriorityExecutor {
+    unsafe { &mut EXECUTOR }
+}
 
 async fn task_template(id: u64) {
     println!("[Coroutine {id}] Task A Start");
@@ -103,30 +108,30 @@ fn demo_tokio(secs: u64) {
 
 #[no_mangle]
 pub extern "C" fn rust_executor_drive() {
-    EXECUTOR.try_tick_all()
+    executor().try_tick_all()
 }
 
 #[no_mangle]
 pub extern "C" fn demo_async_executor(ui_loop: *mut c_void) {
     unsafe { UI_LOOP = ui_loop }
 
-    let task1 = EXECUTOR.spawn(async {
+    let task1 = executor().spawn(async {
         println!("[Coroutine 1] Begin");
         task_template(1).await;
         println!("[Coroutine 1] End");
     });
 
-    let task2 = EXECUTOR.spawn(async {
+    let task2 = executor().spawn(async {
         println!("[Coroutine 2] Begin");
         task_template(2).await;
         println!("[Coroutine 2] End");
     });
 
-    let task3 = EXECUTOR.spawn(async {
+    let task3 = executor().spawn(async {
         println!("[Coroutine 3] Begin");
 
-        let task1 = EXECUTOR.spawn(async { task_template(3).await });
-        let task2 = EXECUTOR.spawn(async { task_template(3).await });
+        let task1 = executor().spawn(async { task_template(3).await });
+        let task2 = executor().spawn(async { task_template(3).await });
 
         futures::future::join(task1, task2).await;
         println!("[Coroutine 3] End");
@@ -134,7 +139,7 @@ pub extern "C" fn demo_async_executor(ui_loop: *mut c_void) {
 
     let tasks = [task1, task2, task3];
     tasks.into_iter().for_each(|task| task.detach());
-    EXECUTOR.try_tick_all();
+    executor().try_tick_all();
 }
 
 // Function hello_rust_cargo without manglng

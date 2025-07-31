@@ -1,11 +1,9 @@
-use async_executor::{StaticExecutor, Task};
+use async_executor::{StaticLocalExecutor, Task};
 use std::future::Future;
 
 pub struct PriorityExecutor {
-    executor: StaticExecutor,
+    executor: StaticLocalExecutor,
 }
-
-unsafe impl Sync for PriorityExecutor {}
 
 impl PriorityExecutor {
     /// Creates a new PriorityExecutor.
@@ -19,7 +17,7 @@ impl PriorityExecutor {
     /// ```
     pub const fn new() -> Self {
         PriorityExecutor {
-            executor: StaticExecutor::new(),
+            executor: StaticLocalExecutor::new(),
         }
     }
 
@@ -39,10 +37,7 @@ impl PriorityExecutor {
     ///     println!("Hello world");
     /// });
     /// ```
-    pub fn spawn<T: Send + 'static>(
-        &'static self,
-        future: impl Future<Output = T> + Send + 'static,
-    ) -> Task<T> {
+    pub fn spawn<T: 'static>(&'static self, future: impl Future<Output = T> + 'static) -> Task<T> {
         self.executor.spawn(future)
     }
 

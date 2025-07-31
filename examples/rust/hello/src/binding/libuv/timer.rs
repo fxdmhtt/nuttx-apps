@@ -2,8 +2,6 @@ use std::ffi::c_void;
 
 pub struct UvTimer(*mut c_void);
 
-unsafe impl Send for UvTimer {}
-
 impl Drop for UvTimer {
     fn drop(&mut self) {
         unsafe { uv_timer_drop(self.0) }

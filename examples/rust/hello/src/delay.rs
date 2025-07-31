@@ -1,8 +1,9 @@
 use std::{
+    cell::RefCell,
     ffi::c_void,
     future::Future,
     pin::Pin,
-    sync::{Arc, Mutex},
+    rc::Rc,
     task::{Context, Poll, Waker},
     time::Duration,
 };
@@ -10,7 +11,7 @@ use std::{
 use crate::{binding::libuv::timer::UvTimer, UI_LOOP};
 
 pub struct Delay {
-    state: Arc<Mutex<State>>,
+    state: Rc<RefCell<State>>,
     duration: Duration,
 }
 
@@ -34,17 +35,20 @@ impl Future for Delay {
     type Output = ();
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         // Working with uv_timer_t
-        self.state.lock().unwrap().timer_handle.get_or_insert_with(|| {
-            let uv_timer = UvTimer::new(unsafe { UI_LOOP });
-            uv_timer.start(
-                self.duration.as_millis() as u64,
-                Arc::into_raw(self.state.clone()) as *mut c_void,
-            );
-            uv_timer
-        });
+        self.state
+            .borrow_mut()
+            .timer_handle
+            .get_or_insert_with(|| {
+                let uv_timer = UvTimer::new(unsafe { UI_LOOP });
+                uv_timer.start(
+                    self.duration.as_millis() as u64,
+                    Rc::into_raw(self.state.clone()) as *mut c_void,
+                );
+                uv_timer
+            });
 
         // Look at the shared state to see if the timer has already completed.
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.borrow_mut();
         if state.completed {
             Poll::Ready(())
         } else {
@@ -70,7 +74,7 @@ impl Delay {
     // Create a new `Delay` which will complete after the provided timeout.
     pub fn new(duration: Duration) -> Self {
         Delay {
-            state: Arc::new(Mutex::new(State::default())),
+            state: Rc::new(RefCell::new(State::default())),
             duration,
         }
     }
@@ -82,9 +86,9 @@ pub async fn delay(secs: u64) {
 
 #[no_mangle]
 pub extern "C" fn rust_delay_wake(state: *mut c_void) {
-    let state = unsafe { Arc::from_raw(state as *const Mutex<State>) };
+    let state = unsafe { Rc::from_raw(state as *const RefCell<State>) };
 
-    let mut state = state.lock().unwrap();
+    let mut state = state.borrow_mut();
     if let Some(timer_handle) = state.timer_handle.take() {
         drop(timer_handle);
     }
