@@ -16,7 +16,7 @@ pub struct Delay {
 }
 
 // Shared state between the future and the waiting thread
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct State {
     // Whether or not the sleep time has elapsed
     completed: bool,
@@ -33,6 +33,7 @@ struct State {
 
 impl Future for Delay {
     type Output = ();
+
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         // Working with uv_timer_t
         self.state
@@ -89,9 +90,6 @@ pub extern "C" fn rust_delay_wake(state: *mut c_void) {
     let state = unsafe { Rc::from_raw(state as *const RefCell<State>) };
 
     let mut state = state.borrow_mut();
-    if let Some(timer_handle) = state.timer_handle.take() {
-        drop(timer_handle);
-    }
 
     // Signal that the timer has completed and wake up the last
     // task on which the future was polled, if one exists.

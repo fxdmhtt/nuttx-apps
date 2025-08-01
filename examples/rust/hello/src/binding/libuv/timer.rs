@@ -6,6 +6,7 @@ use super::uv_loop_t;
 
 type uv_timer_t = c_void;
 
+#[derive(Debug)]
 pub struct UvTimer(*mut uv_timer_t);
 
 impl Drop for UvTimer {
