@@ -1,9 +1,8 @@
-#![allow(non_camel_case_types)]
-
 use std::ffi::c_void;
 
 use super::uv_loop_t;
 
+#[allow(non_camel_case_types)]
 type uv_timer_t = c_void;
 
 #[derive(Debug)]
@@ -17,10 +16,12 @@ impl Drop for UvTimer {
 
 impl UvTimer {
     pub fn new(ui_loop: *mut uv_loop_t) -> Self {
+        assert!(!ui_loop.is_null());
         Self(unsafe { uv_timer_new(ui_loop) })
     }
 
     pub fn start(&self, timeout: u64, state: *mut c_void) {
+        assert!(!state.is_null());
         unsafe { uv_timer_pending(self.0, timeout, state) }
     }
 }

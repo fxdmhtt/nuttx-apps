@@ -1,5 +1,3 @@
-#![allow(clippy::uninlined_format_args)]
-
 extern crate serde;
 extern crate serde_json;
 
@@ -45,7 +43,7 @@ fn demo_serde() {
     };
 
     let json_str = serde_json::to_string(&john).unwrap();
-    println!("{}", json_str);
+    println!("{json_str}");
 
     let jane = Person {
         name: "Jane".to_string(),
@@ -53,7 +51,7 @@ fn demo_serde() {
     };
 
     let json_str_jane = serde_json::to_string(&jane).unwrap();
-    println!("{}", json_str_jane);
+    println!("{json_str_jane}");
 
     let json_data = r#"
         {
@@ -65,7 +63,7 @@ fn demo_serde() {
     println!("Deserialized: {} is {} years old", alice.name, alice.age);
 
     let pretty_json_str = serde_json::to_string_pretty(&alice).unwrap();
-    println!("Pretty JSON:\n{}", pretty_json_str);
+    println!("Pretty JSON:\n{pretty_json_str}");
 }
 
 fn demo_thread(secs: u64) -> std::thread::JoinHandle<()> {
@@ -113,6 +111,7 @@ pub extern "C" fn rust_executor_drive() {
 
 #[no_mangle]
 pub extern "C" fn demo_async_executor(ui_loop: *mut c_void) {
+    assert!(!ui_loop.is_null());
     unsafe { UI_LOOP = ui_loop }
 
     let task1 = executor().spawn(async {

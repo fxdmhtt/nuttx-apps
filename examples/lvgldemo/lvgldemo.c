@@ -27,6 +27,7 @@
 #include <nuttx/config.h>
 #include <unistd.h>
 #include <sys/boardctl.h>
+#include <syslog.h>
 
 #include <lvgl/lvgl.h>
 #include <lvgl/demos/lv_demos.h>
@@ -76,9 +77,15 @@ static void _rust_executor_drive(uv_async_t *handle)
   rust_executor_drive();
 }
 
-int rust_executor_wake(void)
+void rust_executor_wake(void)
 {
-  return uv_async_send(&async);
+  int ret = uv_async_send(&async);
+#ifndef __OPTIMIZE__
+  if (ret < 0)
+  {
+    syslog(LOG_ERR, "[%s] Failed to wake up the rust async executor %s[%d].\n", __func__, uv_err_name(ret), ret);
+  }
+#endif
 }
 
 static void lv_nuttx_uv_loop(uv_loop_t *loop, lv_nuttx_result_t *result)
