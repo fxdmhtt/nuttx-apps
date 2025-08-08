@@ -1,4 +1,5 @@
 #include <nuttx/config.h>
+#include <stdlib.h>
 #include <assert.h>
 #include <syslog.h>
 
@@ -44,7 +45,8 @@ void uv_timer_drop(uv_timer_t *handle)
 {
     assert(handle != NULL);
 
-    free(handle);
+    uv_timer_stop(handle);
+    uv_close((uv_handle_t *)handle, (void (*)(uv_handle_t *handle))free);
 }
 
 void uv_timer_pending(uv_timer_t *handle, uint64_t timeout, void *state)
