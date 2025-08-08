@@ -1,8 +1,8 @@
 extern crate serde;
 extern crate serde_json;
 
-use crate::delay::delay;
-use std::{ffi::c_void, ptr::null_mut};
+use crate::runtime::{delay::delay, executor};
+use std::ffi::c_void;
 
 use serde::{Deserialize, Serialize};
 
@@ -13,16 +13,7 @@ struct Person {
 }
 
 mod binding;
-mod delay;
-mod executor;
-
-static mut EXECUTOR: executor::PriorityExecutor = executor::PriorityExecutor::new();
-pub static mut UI_LOOP: *mut c_void = null_mut();
-
-#[allow(static_mut_refs)]
-fn executor() -> &'static mut executor::PriorityExecutor {
-    unsafe { &mut EXECUTOR }
-}
+mod runtime;
 
 async fn task_template(id: u64) {
     println!("[Coroutine {id}] Task A Start");
@@ -105,14 +96,9 @@ fn demo_tokio(secs: u64) {
 }
 
 #[no_mangle]
-pub extern "C" fn rust_executor_drive() {
-    executor().try_tick_all()
-}
-
-#[no_mangle]
 pub extern "C" fn demo_async_executor(ui_loop: *mut c_void) {
     assert!(!ui_loop.is_null());
-    unsafe { UI_LOOP = ui_loop }
+    runtime::rust_register_loop(ui_loop);
 
     let task1 = executor().spawn(async {
         println!("[Coroutine 1] Begin");
@@ -140,6 +126,33 @@ pub extern "C" fn demo_async_executor(ui_loop: *mut c_void) {
     tasks.into_iter().for_each(|task| task.detach());
     executor().try_tick_all();
 }
+
+#[allow(non_camel_case_types)]
+type lv_event_code_t = u32;
+#[allow(non_camel_case_types)]
+type lv_event_t = c_void;
+
+extern "C" {
+    fn lv_event_get_code(e: *mut lv_event_t) -> lv_event_code_t;
+    fn lv_event_get_target(e: *mut lv_event_t) -> *mut c_void;
+}
+
+event!(button_short_clicked_event_demo, e, async {
+    let code = unsafe { lv_event_get_code(e) };
+    let target = unsafe { lv_event_get_target(e) };
+
+    println!("The async event {code:?} on {target:?} is invoking...");
+    delay(1).await;
+    println!("The async event {code:?} on {target:?} has been invoked!");
+});
+
+event!(button_long_pressed_event_demo, e, {
+    let code = unsafe { lv_event_get_code(e) };
+    let target = unsafe { lv_event_get_target(e) };
+
+    println!("The event {code:?} on {target:?} is invoking...");
+    println!("The event {code:?} on {target:?} has been invoked!");
+});
 
 // Function hello_rust_cargo without manglng
 // Bug: Cannot run twice because of random exceptions in tokio and infinite recursion stack overflow

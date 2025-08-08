@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use crate::{binding::libuv::UvTimer, UI_LOOP};
+use crate::{binding::libuv::UvTimer, runtime::UI_LOOP};
 
 pub struct Delay {
     state: Pin<Box<State>>,
