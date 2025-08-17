@@ -29,6 +29,6 @@ MODULE = $(CONFIG_EXAMPLES_LVGLDEMO)
 
 # LVGL demo Example
 
-MAINSRC = lvgldemo.c $(wildcard binding/libuv/*.c)
+MAINSRC = lvgldemo.c $(wildcard binding/libuv/*.c) $(wildcard demos/*.c)
 
 include $(APPDIR)/Application.mk
