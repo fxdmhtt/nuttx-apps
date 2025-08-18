@@ -7,7 +7,7 @@
 
 void event_demo_main(void) {
     lv_obj_t *btn = lv_button_create(lv_screen_active());
-    lv_obj_center(btn);
+    lv_obj_set_align(btn, LV_ALIGN_BOTTOM_MID);
     lv_obj_t *lbl = lv_label_create(btn);
     lv_label_set_text(lbl, "Try a short click or a long press on it!");
     void button_short_clicked_event_demo(lv_event_t *);

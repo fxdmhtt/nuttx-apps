@@ -109,6 +109,8 @@ static void lv_nuttx_uv_loop(uv_loop_t *loop, lv_nuttx_result_t *result)
 
   void event_demo_main(void);
   event_demo_main();
+  void frp_demo_main(void);
+  frp_demo_main();
 
   data = lv_nuttx_uv_init(&uv_info);
   uv_run(loop, UV_RUN_DEFAULT);
