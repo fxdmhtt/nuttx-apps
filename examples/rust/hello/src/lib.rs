@@ -1,10 +1,7 @@
 extern crate serde;
 extern crate serde_json;
 
-use crate::{
-    binding::lvgl::*,
-    runtime::{delay::delay, executor},
-};
+use crate::runtime::{delay::delay, executor};
 use std::ffi::c_void;
 
 use serde::{Deserialize, Serialize};
@@ -16,6 +13,7 @@ struct Person {
 }
 
 mod binding;
+mod demos;
 mod runtime;
 
 async fn task_template(id: u64) {
@@ -129,19 +127,6 @@ pub extern "C" fn demo_async_executor(ui_loop: *mut c_void) {
     tasks.into_iter().for_each(|task| task.detach());
     executor().try_tick_all();
 }
-
-event!(button_short_clicked_event_demo, e, async {
-    let code: lv_event_code_t = unsafe { lv_event_get_code(e) };
-    let target = unsafe { lv_event_get_target(e) };
-
-    println!("The async event {code:?} on {target:?} is invoking...");
-    delay(1).await;
-    println!("The async event {code:?} on {target:?} has been invoked!");
-});
-
-event!(button_long_pressed_event_demo, {
-    println!("The long pressed event has been invoked!");
-});
 
 // Function hello_rust_cargo without manglng
 // Bug: Cannot run twice because of random exceptions in tokio and infinite recursion stack overflow

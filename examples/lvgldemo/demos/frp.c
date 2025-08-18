@@ -7,17 +7,32 @@
 
 #include "lvgl/examples/assets/img_cogwheel_argb.c"
 
-static lv_obj_t *page;
 static lv_style_t style_radio;
 static lv_style_t style_radio_chk;
-static int32_t active_index = 4;
+
+lv_obj_t *page;
+lv_obj_t *radio_cont;
+lv_obj_t *img;
+lv_obj_t *img_label;
+
+int32_t active_index_get(void);
+bool active_index_set(int32_t);
+
+void switch_color_event(lv_event_t *e);
+
+void frp_demo_rs_init(void);
+
+lv_color_t lv_color_make_rs(uint8_t r, uint8_t g, uint8_t b)
+{
+    return lv_color_make(r, g, b);
+}
 
 static void radio_event_handler(lv_event_t *e)
 {
-    int32_t *active_id = (int32_t *)lv_event_get_user_data(e);
+    int32_t active_id = active_index_get();
     lv_obj_t *cont = (lv_obj_t *)lv_event_get_current_target(e);
     lv_obj_t *act_cb = lv_event_get_target_obj(e);
-    lv_obj_t *old_cb = lv_obj_get_child(cont, *active_id);
+    lv_obj_t *old_cb = lv_obj_get_child(cont, active_id);
 
     /*Do nothing if the container was clicked*/
     if (act_cb == cont)
@@ -26,7 +41,7 @@ static void radio_event_handler(lv_event_t *e)
     lv_obj_remove_state(old_cb, LV_STATE_CHECKED); /*Uncheck the previous radio button*/
     lv_obj_add_state(act_cb, LV_STATE_CHECKED);    /*Check the current radio button*/
 
-    *active_id = lv_obj_get_index(act_cb);
+    active_index_set(lv_obj_get_index(act_cb));
 }
 
 static void radiobutton_create(lv_obj_t *parent, const char *txt)
@@ -51,68 +66,59 @@ static lv_obj_t *page_create(lv_obj_t *parent, int width, int height)
 
     lv_obj_t *cont = obj = lv_obj_create(parent);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
-    lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
+    // lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
     lv_obj_set_size(obj, width, height);
     lv_obj_center(obj);
-    lv_obj_set_style_bg_color(obj, lv_color_white(), LV_PART_MAIN);
 
     lv_obj_t *tier1 = obj = lv_obj_create(obj);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
     lv_obj_set_size(obj, lv_pct(100), lv_pct(60));
     lv_obj_set_pos(obj, 0, 0);
-    // lv_obj_set_style_bg_color(obj, lv_color_make(0xff, 0, 0), 0);
 
     lv_obj_t *tier2 = obj = lv_obj_create(cont);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
     lv_obj_set_size(obj, lv_pct(100), lv_pct(20));
     lv_obj_align_to(obj, tier1, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 0);
-    // lv_obj_set_style_bg_color(obj, lv_color_make(0, 0xff, 0), 0);
 
     lv_obj_t *tier3 = obj = lv_obj_create(cont);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
     lv_obj_set_size(obj, lv_pct(100), lv_pct(20));
     lv_obj_align_to(obj, tier2, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 0);
-    // lv_obj_set_style_bg_color(obj, lv_color_make(0, 0, 0xff), 0);
 
     lv_obj_t *left = obj = lv_obj_create(tier1);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
     lv_obj_set_size(obj, lv_pct(40), lv_pct(100));
     lv_obj_set_pos(obj, 0, 0);
-    // lv_obj_set_style_bg_color(obj, lv_color_make(0xff, 0xff, 0), 0);
 
     lv_obj_t *right = obj = lv_obj_create(tier1);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
     lv_obj_set_size(obj, lv_pct(60), lv_pct(100));
     lv_obj_align_to(obj, left, LV_ALIGN_OUT_RIGHT_TOP, 0, 0);
-    // lv_obj_set_style_bg_color(obj, lv_color_make(0, 0xff, 0xff), 0);
 
     lv_obj_t *up = obj = lv_obj_create(left);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
     lv_obj_set_size(obj, lv_pct(100), lv_pct(70));
     lv_obj_set_pos(obj, 0, 0);
-    // lv_obj_set_style_bg_color(obj, lv_color_make(0x7f, 0xff, 0), 0);
 
     lv_obj_t *down = obj = lv_obj_create(left);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
     lv_obj_set_size(obj, lv_pct(100), lv_pct(30));
     lv_obj_align_to(obj, up, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 0);
-    // lv_obj_set_style_bg_color(obj, lv_color_make(0xff, 0x7f, 0), 0);
 
     LV_IMAGE_DECLARE(img_cogwheel_argb);
-    lv_obj_t *img = obj = lv_image_create(up);
+    img = obj = lv_image_create(up);
     lv_obj_center(obj);
     lv_image_set_src(img, &img_cogwheel_argb);
 
-    lv_obj_t *img_label = obj = lv_label_create(down);
+    img_label = obj = lv_label_create(down);
     lv_obj_center(obj);
-    lv_label_set_text(img_label, "label");
 
     lv_obj_t *list = obj = lv_list_create(right);
     lv_obj_set_size(obj, lv_pct(100), lv_pct(100));
@@ -121,14 +127,14 @@ static lv_obj_t *page_create(lv_obj_t *parent, int width, int height)
         lv_list_add_text(list, "list item");
     }
 
-    lv_obj_t *radio_cont = obj = lv_obj_create(tier2);
+    radio_cont = obj = lv_obj_create(tier2);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
     lv_obj_set_size(obj, lv_pct(80), LV_SIZE_CONTENT);
     lv_obj_set_align(obj, LV_ALIGN_LEFT_MID);
     lv_obj_set_flex_flow(obj, LV_FLEX_FLOW_ROW);
     lv_obj_set_style_pad_gap(obj, 10, 0);
-    lv_obj_add_event_cb(radio_cont, radio_event_handler, LV_EVENT_CLICKED, &active_index);
+    lv_obj_add_event_cb(radio_cont, radio_event_handler, LV_EVENT_CLICKED, NULL);
 
     lv_snprintf(buf, sizeof(buf), "Red");
     radiobutton_create(radio_cont, buf);
@@ -141,16 +147,16 @@ static lv_obj_t *page_create(lv_obj_t *parent, int width, int height)
     lv_snprintf(buf, sizeof(buf), "None");
     radiobutton_create(radio_cont, buf);
 
-    lv_obj_add_state(lv_obj_get_child(radio_cont, -1), LV_STATE_CHECKED);
+    lv_obj_add_state(lv_obj_get_child(radio_cont, active_index_get()), LV_STATE_CHECKED);
 
     obj = lv_obj_create(tier2);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
     lv_obj_set_size(obj, lv_pct(20), LV_SIZE_CONTENT);
     lv_obj_set_align(obj, LV_ALIGN_RIGHT_MID);
-    // lv_obj_set_style_bg_color(obj, lv_color_make(0xff, 0, 0xff), 0);
     lv_obj_t *switch_btn = obj = lv_btn_create(obj);
     lv_obj_center(obj);
+    lv_obj_add_event_cb(switch_btn, switch_color_event, LV_EVENT_SHORT_CLICKED, NULL);
     lv_obj_t *btn_lbl = lv_label_create(switch_btn);
     lv_label_set_text(btn_lbl, "switch");
 
@@ -159,14 +165,12 @@ static lv_obj_t *page_create(lv_obj_t *parent, int width, int height)
     lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
     lv_obj_set_size(obj, lv_pct(50), lv_pct(100));
     lv_obj_set_align(obj, LV_ALIGN_LEFT_MID);
-    // lv_obj_set_style_bg_color(obj, lv_color_make(0xff, 0xff, 0), 0);
 
     right = obj = lv_obj_create(tier3);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
     lv_obj_set_size(obj, lv_pct(50), lv_pct(100));
     lv_obj_set_align(obj, LV_ALIGN_RIGHT_MID);
-    // lv_obj_set_style_bg_color(obj, lv_color_make(0, 0xff, 0xff), 0);
 
     lv_obj_t *btn1 = obj = lv_btn_create(left);
     lv_obj_center(obj);
@@ -188,4 +192,5 @@ static lv_obj_t *page_create(lv_obj_t *parent, int width, int height)
 void frp_demo_main(void)
 {
     page = page_create(lv_screen_active(), 500, 360);
+    frp_demo_rs_init();
 }
