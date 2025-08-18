@@ -146,12 +146,8 @@ event!(button_short_clicked_event_demo, e, async {
     println!("The async event {code:?} on {target:?} has been invoked!");
 });
 
-event!(button_long_pressed_event_demo, e, {
-    let code = unsafe { lv_event_get_code(e) };
-    let target = unsafe { lv_event_get_target(e) };
-
-    println!("The event {code:?} on {target:?} is invoking...");
-    println!("The event {code:?} on {target:?} has been invoked!");
+event!(button_long_pressed_event_demo, {
+    println!("The long pressed event has been invoked!");
 });
 
 // Function hello_rust_cargo without manglng

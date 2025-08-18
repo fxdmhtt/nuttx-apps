@@ -22,6 +22,19 @@ macro_rules! event {
             $body
         }
     };
+    ($func:ident, async $body:block) => {
+        #[no_mangle]
+        pub extern "C" fn $func(_: *mut lv_event_t) {
+            $crate::executor().spawn(async move { $body }).detach();
+            $crate::executor().try_tick_all();
+        }
+    };
+    ($func:ident, $body:block) => {
+        #[no_mangle]
+        pub extern "C" fn $func(_: *mut lv_event_t) {
+            $body
+        }
+    };
 }
 
 static mut EXECUTOR: PriorityExecutor = PriorityExecutor::new();
