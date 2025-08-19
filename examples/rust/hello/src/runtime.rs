@@ -1,41 +1,10 @@
 pub mod delay;
+pub mod event;
 pub mod executor;
 
 use std::{ffi::c_void, ptr::null_mut};
 
 use crate::runtime::executor::PriorityExecutor;
-
-#[macro_export]
-macro_rules! event {
-    ($func:ident, $arg:ident, async $body:block) => {
-        #[no_mangle]
-        #[allow(clippy::not_unsafe_ptr_arg_deref)]
-        pub extern "C" fn $func($arg: *mut lv_event_t) {
-            $crate::executor().spawn(async move { $body }).detach();
-            $crate::executor().try_tick_all();
-        }
-    };
-    ($func:ident, $arg:ident, $body:block) => {
-        #[no_mangle]
-        #[allow(clippy::not_unsafe_ptr_arg_deref)]
-        pub extern "C" fn $func($arg: *mut lv_event_t) {
-            $body
-        }
-    };
-    ($func:ident, async $body:block) => {
-        #[no_mangle]
-        pub extern "C" fn $func(_: *mut lv_event_t) {
-            $crate::executor().spawn(async move { $body }).detach();
-            $crate::executor().try_tick_all();
-        }
-    };
-    ($func:ident, $body:block) => {
-        #[no_mangle]
-        pub extern "C" fn $func(_: *mut lv_event_t) {
-            $body
-        }
-    };
-}
 
 static mut EXECUTOR: PriorityExecutor = PriorityExecutor::new();
 pub static mut UI_LOOP: *mut c_void = null_mut();

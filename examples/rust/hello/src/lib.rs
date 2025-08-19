@@ -1,7 +1,10 @@
 extern crate serde;
 extern crate serde_json;
 
-use crate::runtime::{delay::delay, executor};
+use crate::{
+    binding::lvgl::*,
+    runtime::{delay::delay, executor},
+};
 use std::ffi::c_void;
 
 use serde::{Deserialize, Serialize};
@@ -127,18 +130,8 @@ pub extern "C" fn demo_async_executor(ui_loop: *mut c_void) {
     executor().try_tick_all();
 }
 
-#[allow(non_camel_case_types)]
-type lv_event_code_t = u32;
-#[allow(non_camel_case_types)]
-type lv_event_t = c_void;
-
-extern "C" {
-    fn lv_event_get_code(e: *mut lv_event_t) -> lv_event_code_t;
-    fn lv_event_get_target(e: *mut lv_event_t) -> *mut c_void;
-}
-
 event!(button_short_clicked_event_demo, e, async {
-    let code = unsafe { lv_event_get_code(e) };
+    let code: lv_event_code_t = unsafe { lv_event_get_code(e) };
     let target = unsafe { lv_event_get_target(e) };
 
     println!("The async event {code:?} on {target:?} is invoking...");
