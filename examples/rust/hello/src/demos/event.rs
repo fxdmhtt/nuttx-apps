@@ -1,6 +1,6 @@
 use crate::{
     binding::lvgl::{lv_event_get_code, lv_event_get_target},
-    delay, event,
+    runtime::delay::delay, event,
 };
 
 event!(button_short_clicked_event_demo, e, async {
