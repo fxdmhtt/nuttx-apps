@@ -1,58 +1,34 @@
 #![allow(static_mut_refs)]
 
+use std::ffi::c_char;
+use std::time::Duration;
 use std::{ffi::CString, rc::Rc};
 
+use async_executor::Task;
+use futures::future::LocalBoxFuture;
+use futures::stream::FuturesUnordered;
+use futures::{stream, FutureExt, StreamExt};
+use itertools_num::linspace;
 use reactive_cache::{effect, memo, signal, IEffect, Lazy};
 
 use crate::binding::lvgl::*;
 use crate::event;
+use crate::runtime::delay::{delay, Delay};
+use crate::runtime::executor;
 
 extern "C" {
     static mut radio_cont: *mut lv_obj_t;
     static mut img: *mut lv_obj_t;
     static mut img_label: *mut lv_obj_t;
+    static mut btn1: *mut lv_obj_t;
+    static mut btn2: *mut lv_obj_t;
+    static mut no_color_btn: *mut lv_obj_t;
+    static mut list: *mut lv_obj_t;
 
     fn lv_color_make_rs(r: u8, g: u8, b: u8) -> lv_color_t;
+    fn create_list_item(parent: *mut lv_obj_t, text: *const c_char) -> *mut lv_obj_t;
+    fn create_list_hint() -> *mut lv_obj_t;
 }
-
-static mut EFFECTS: Lazy<Vec<Rc<dyn IEffect>>> = Lazy::new(|| {
-    vec![
-        effect!(|| {
-            let id = active_index_get();
-            (0..5).filter(|x| *x != id).for_each(|id| unsafe {
-                lv_obj_remove_state(lv_obj_get_child(radio_cont, id), LV_STATE_CHECKED)
-            });
-
-            unsafe { lv_obj_add_state(lv_obj_get_child(radio_cont, id), LV_STATE_CHECKED) };
-        }),
-        effect!(|| {
-            let color = match state() {
-                Some(color) => {
-                    unsafe { lv_obj_set_style_image_recolor_opa(img, 0x7f, 0) };
-                    match color {
-                        Color::Red => unsafe { lv_color_make_rs(0xff, 0, 0) },
-                        Color::Green => unsafe { lv_color_make_rs(0, 0xff, 0) },
-                        Color::Blue => unsafe { lv_color_make_rs(0, 0, 0xff) },
-                        Color::Yellow => unsafe { lv_color_make_rs(0xff, 0xff, 0) },
-                    }
-                }
-                None => {
-                    unsafe { lv_obj_set_style_image_recolor_opa(img, 0, 0) };
-                    unsafe { lv_color_make_rs(0, 0, 0) }
-                }
-            };
-            unsafe { lv_obj_set_style_image_recolor(img, color, 0) };
-        }),
-        effect!(|| {
-            let color = state()
-                .map(|c| format!("Color {c:?}"))
-                .unwrap_or("Original Color".to_string());
-            unsafe {
-                lv_label_set_text(img_label, CString::new(color).unwrap().as_ptr() as *const _)
-            };
-        }),
-    ]
-});
 
 #[derive(Debug, Copy, Clone)]
 enum Color {
@@ -66,6 +42,18 @@ type State = Option<Color>;
 
 signal!(
     static mut ACTIVE_INDEX: i32 = 4;
+);
+
+signal!(
+    static mut INTENSE: u8 = 0x7f;
+);
+
+signal!(
+    static mut RECOLOR_ANIMATION: bool = false;
+);
+
+signal!(
+    static mut LIST_ITEM_COUNT: u32 = 0;
 );
 
 #[no_mangle]
@@ -91,10 +79,237 @@ fn state() -> State {
 }
 
 event!(switch_color_event, {
-    active_index_set((active_index_get() + 1) % 5);
+    let id = active_index_get() + 1;
+    let id = if *RECOLOR_ANIMATION() && id == 4 {
+        id + 1
+    } else {
+        id
+    };
+    active_index_set(id % 5);
+});
+
+static mut TASKS: Lazy<FuturesUnordered<LocalBoxFuture<()>>> = Lazy::new(FuturesUnordered::new);
+
+fn tasks() -> &'static mut Lazy<FuturesUnordered<LocalBoxFuture<'static, ()>>> {
+    unsafe { &mut TASKS }
+}
+
+fn tasks_cleanup_in_background() -> Task<()> {
+    executor().spawn(async move {
+        let mut id = 0;
+        loop {
+            if (unsafe { TASKS.next() }.await).is_some() {
+                println!("A mission completed! id: {id}");
+                id += 1;
+            } else {
+                delay(1).await;
+            }
+        }
+        // while let Some(result) = unsafe { TASKS.next() }.await {
+        //     println!("A mission completed! {result:?}");
+        // }
+        // println!("Exit!");
+    })
+}
+
+async fn list_item_fade(obj: *mut lv_obj_t, cnt: usize) {
+    stream::iter(linspace(255.0, 0.0, cnt).map(|x: f32| x.round() as u8))
+        .for_each(|x| async move {
+            unsafe { lv_obj_set_style_opa(obj, x, LV_PART_MAIN) };
+            Delay::new(Duration::from_millis(100)).await;
+        })
+        .await;
+
+    unsafe { lv_obj_delete(obj) };
+}
+
+async fn intense_animation(target: u8, duration: Duration) {
+    let delay = Duration::from_millis(100);
+    let ticks = duration.div_duration_f32(delay) as i16;
+    let start = *INTENSE();
+
+    let header = if target > start {
+        "Increase color density"
+    } else {
+        "Decrease color density"
+    };
+    let text = format!("{header} - {start}");
+    let lbl = unsafe { create_list_item(list, CString::new(text).unwrap().as_ptr() as *const _) };
+
+    RECOLOR_ANIMATION_set(true);
+
+    stream::iter(
+        linspace(start as f32, target as f32, ticks as usize).map(|x: f32| x.round() as u8),
+    )
+    .for_each(|cur| async move {
+        INTENSE_set(cur);
+
+        let text = format!("{header} - {cur}");
+        unsafe { lv_checkbox_set_text(lbl, CString::new(text).unwrap().as_ptr() as *const _) };
+
+        Delay::new(delay).await;
+    })
+    .await;
+    INTENSE_set(target);
+
+    RECOLOR_ANIMATION_set(false);
+
+    list_item_fade(lbl, 15).await;
+}
+
+event!(intense_inc_event, async {
+    let intense = match *INTENSE() {
+        0 => Some(0x7f),
+        0x7f => Some(0xff),
+        0xff => None,
+        _ => unreachable!(),
+    };
+    if let Some(intense) = intense {
+        intense_animation(intense, Duration::from_secs(5)).await;
+    }
+});
+
+event!(intense_dec_or_clear_event, async {
+    match state() {
+        Some(_) => {
+            let intense = match *INTENSE() {
+                0 => None,
+                0x7f => Some(0),
+                0xff => Some(0x7f),
+                _ => unreachable!(),
+            };
+            if let Some(intense) = intense {
+                intense_animation(intense, Duration::from_secs(5)).await;
+            }
+        }
+        None => {
+            todo!()
+        }
+    };
+});
+
+event!(list_item_changed_event, e, {
+    let obj = unsafe { lv_event_get_target(e) };
+    let cnt = unsafe { lv_obj_get_child_count(obj) };
+    LIST_ITEM_COUNT_set(cnt);
+});
+
+static mut EFFECTS: Lazy<Vec<Rc<dyn IEffect>>> = Lazy::new(|| {
+    vec![
+        effect!(|| {
+            let id = active_index_get();
+            (0..5)
+                .map(|x| match x {
+                    _ if x == id => lv_obj_add_state,
+                    _ => lv_obj_remove_state,
+                })
+                .zip(0..5)
+                .for_each(|(f, id)| unsafe {
+                    f(lv_obj_get_child(radio_cont, id), LV_STATE_CHECKED)
+                });
+        }),
+        effect!(
+            || {
+                let color = match state() {
+                    Some(color) => {
+                        unsafe { lv_obj_set_style_image_recolor_opa(img, *INTENSE(), 0) };
+                        match color {
+                            Color::Red => unsafe { lv_color_make_rs(0xff, 0, 0) },
+                            Color::Green => unsafe { lv_color_make_rs(0, 0xff, 0) },
+                            Color::Blue => unsafe { lv_color_make_rs(0, 0, 0xff) },
+                            Color::Yellow => unsafe { lv_color_make_rs(0xff, 0xff, 0) },
+                        }
+                    }
+                    None => {
+                        unsafe { lv_obj_set_style_image_recolor_opa(img, 0, 0) };
+                        unsafe { lv_color_make_rs(0, 0, 0) }
+                    }
+                };
+                unsafe { lv_obj_set_style_image_recolor(img, color, 0) };
+            },
+            || {
+                INTENSE();
+            }
+        ),
+        effect!(|| {
+            let color = state()
+                .map(|c| format!("Color {c:?}"))
+                .unwrap_or("Original Color".to_string());
+            unsafe {
+                lv_label_set_text(img_label, CString::new(color).unwrap().as_ptr() as *const _)
+            };
+        }),
+        effect!(|| {
+            match (state(), *RECOLOR_ANIMATION()) {
+                (None, _) => unsafe { lv_obj_add_state(btn1, LV_STATE_DISABLED) },
+                (_, true) => unsafe { lv_obj_add_state(btn1, LV_STATE_DISABLED) },
+                _ => unsafe { lv_obj_remove_state(btn1, LV_STATE_DISABLED) },
+            };
+        }),
+        effect!(|| {
+            let text = match state() {
+                Some(_) => "Intense Dec",
+                None => "Clear Log",
+            };
+            unsafe {
+                lv_label_set_text(
+                    lv_obj_get_child(btn2, 0),
+                    CString::new(text).unwrap().as_ptr() as *const _,
+                )
+            };
+        }),
+        effect!(|| {
+            let color = match state() {
+                Some(_) => unsafe { lv_palette_main(LV_PALETTE_BLUE) },
+                None => unsafe { lv_palette_main(LV_PALETTE_RED) },
+            };
+            unsafe { lv_obj_set_style_bg_color(btn2, color, LV_PART_MAIN) };
+        }),
+        effect!(|| {
+            let btns = unsafe { [btn2, no_color_btn] };
+            match *RECOLOR_ANIMATION() {
+                true => btns
+                    .iter()
+                    .for_each(|btn| unsafe { lv_obj_add_state(*btn, LV_STATE_DISABLED) }),
+                false => btns
+                    .iter()
+                    .for_each(|btn| unsafe { lv_obj_remove_state(*btn, LV_STATE_DISABLED) }),
+            }
+        }),
+        effect!(|| {
+            let text = state()
+                .map(|c| format!("Recolor to {c:?}"))
+                .unwrap_or("Non Recolor!".to_string());
+            let lbl =
+                unsafe { create_list_item(list, CString::new(text).unwrap().as_ptr() as *const _) };
+            let task = executor().spawn(async move {
+                delay(5).await;
+                list_item_fade(lbl, 10).await;
+            });
+            unsafe { TASKS.push(task.boxed_local()) };
+            executor().try_tick_all();
+        }),
+        effect!(|| {
+            static mut HINT: Option<*mut lv_obj_t> = None;
+            match *LIST_ITEM_COUNT() {
+                0 => {
+                    if unsafe { HINT }.is_none() {
+                        unsafe { HINT.replace(create_list_hint()) };
+                    }
+                }
+                _ => {
+                    if let Some(obj) = unsafe { HINT.take() } {
+                        unsafe { lv_obj_delete(obj) };
+                    }
+                }
+            };
+        }),
+    ]
 });
 
 #[no_mangle]
 pub extern "C" fn frp_demo_rs_init() {
     Lazy::force(unsafe { &EFFECTS });
+
+    tasks_cleanup_in_background().detach();
 }

@@ -14,11 +14,19 @@ lv_obj_t *page;
 lv_obj_t *radio_cont;
 lv_obj_t *img;
 lv_obj_t *img_label;
+lv_obj_t *switch_btn;
+lv_obj_t *no_color_btn;
+lv_obj_t *btn1;
+lv_obj_t *btn2;
+lv_obj_t *list;
 
 int32_t active_index_get(void);
 bool active_index_set(int32_t);
 
 void switch_color_event(lv_event_t *e);
+void intense_inc_event(lv_event_t *e);
+void intense_dec_or_clear_event(lv_event_t *e);
+void list_item_changed_event(lv_event_t *e);
 
 void frp_demo_rs_init(void);
 
@@ -27,30 +35,57 @@ lv_color_t lv_color_make_rs(uint8_t r, uint8_t g, uint8_t b)
     return lv_color_make(r, g, b);
 }
 
+lv_obj_t *create_list_item(lv_obj_t *parent, const char *text)
+{
+    lv_obj_t *item = lv_list_add_text(list, text);
+    lv_obj_set_style_bg_color(item, lv_color_white(), 0);
+    return item;
+}
+
+lv_obj_t *create_list_hint(void)
+{
+    lv_coord_t w = lv_obj_get_width(list);
+    lv_coord_t h = lv_obj_get_height(list);
+    lv_coord_t x = lv_obj_get_x(list);
+    lv_coord_t y = lv_obj_get_y(list);
+
+    lv_obj_t *cont = lv_obj_create(lv_obj_get_parent(list));
+    lv_obj_set_size(cont, w, h);
+    lv_obj_set_pos(cont, x, y);
+    lv_obj_t *hint = lv_label_create(cont);
+    lv_label_set_text(hint, "Empty!");
+    lv_obj_center(hint);
+
+    lv_obj_set_style_bg_color(hint, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(hint, lv_color_hex(0x888888), LV_PART_MAIN);
+    lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(hint, 5, LV_PART_MAIN);
+
+    return cont;
+}
+
 static void radio_event_handler(lv_event_t *e)
 {
-    int32_t active_id = active_index_get();
     lv_obj_t *cont = (lv_obj_t *)lv_event_get_current_target(e);
     lv_obj_t *act_cb = lv_event_get_target_obj(e);
-    lv_obj_t *old_cb = lv_obj_get_child(cont, active_id);
 
     /*Do nothing if the container was clicked*/
     if (act_cb == cont)
         return;
 
-    lv_obj_remove_state(old_cb, LV_STATE_CHECKED); /*Uncheck the previous radio button*/
-    lv_obj_add_state(act_cb, LV_STATE_CHECKED);    /*Check the current radio button*/
+    lv_obj_add_state(act_cb, LV_STATE_CHECKED); /*Ensure the current radio button is checked (multiclick)*/
 
     active_index_set(lv_obj_get_index(act_cb));
 }
 
-static void radiobutton_create(lv_obj_t *parent, const char *txt)
+static lv_obj_t *radiobutton_create(lv_obj_t *parent, const char *txt)
 {
     lv_obj_t *obj = lv_checkbox_create(parent);
     lv_checkbox_set_text(obj, txt);
     lv_obj_add_flag(obj, LV_OBJ_FLAG_EVENT_BUBBLE);
     lv_obj_add_style(obj, &style_radio, LV_PART_INDICATOR);
     lv_obj_add_style(obj, &style_radio_chk, LV_PART_INDICATOR | LV_STATE_CHECKED);
+    return obj;
 }
 
 static lv_obj_t *page_create(lv_obj_t *parent, int width, int height)
@@ -66,9 +101,10 @@ static lv_obj_t *page_create(lv_obj_t *parent, int width, int height)
 
     lv_obj_t *cont = obj = lv_obj_create(parent);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
-    // lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
     lv_obj_set_size(obj, width, height);
     lv_obj_center(obj);
+    lv_obj_set_style_outline_width(obj, 2, LV_PART_MAIN);
 
     lv_obj_t *tier1 = obj = lv_obj_create(obj);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
@@ -120,12 +156,9 @@ static lv_obj_t *page_create(lv_obj_t *parent, int width, int height)
     img_label = obj = lv_label_create(down);
     lv_obj_center(obj);
 
-    lv_obj_t *list = obj = lv_list_create(right);
+    list = obj = lv_list_create(right);
     lv_obj_set_size(obj, lv_pct(100), lv_pct(100));
-    for (int i = 0; i < 5; i++)
-    {
-        lv_list_add_text(list, "list item");
-    }
+    lv_obj_add_event_cb(list, list_item_changed_event, LV_EVENT_CHILD_CHANGED, 0);
 
     radio_cont = obj = lv_obj_create(tier2);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
@@ -145,7 +178,7 @@ static lv_obj_t *page_create(lv_obj_t *parent, int width, int height)
     lv_snprintf(buf, sizeof(buf), "Yellow");
     radiobutton_create(radio_cont, buf);
     lv_snprintf(buf, sizeof(buf), "None");
-    radiobutton_create(radio_cont, buf);
+    no_color_btn = radiobutton_create(radio_cont, buf);
 
     lv_obj_add_state(lv_obj_get_child(radio_cont, active_index_get()), LV_STATE_CHECKED);
 
@@ -154,7 +187,7 @@ static lv_obj_t *page_create(lv_obj_t *parent, int width, int height)
     lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
     lv_obj_set_size(obj, lv_pct(20), LV_SIZE_CONTENT);
     lv_obj_set_align(obj, LV_ALIGN_RIGHT_MID);
-    lv_obj_t *switch_btn = obj = lv_btn_create(obj);
+    switch_btn = obj = lv_btn_create(obj);
     lv_obj_center(obj);
     lv_obj_add_event_cb(switch_btn, switch_color_event, LV_EVENT_SHORT_CLICKED, NULL);
     lv_obj_t *btn_lbl = lv_label_create(switch_btn);
@@ -172,14 +205,20 @@ static lv_obj_t *page_create(lv_obj_t *parent, int width, int height)
     lv_obj_set_size(obj, lv_pct(50), lv_pct(100));
     lv_obj_set_align(obj, LV_ALIGN_RIGHT_MID);
 
-    lv_obj_t *btn1 = obj = lv_btn_create(left);
+    btn1 = obj = lv_btn_create(left);
+    lv_obj_set_size(obj, 120, 40);
     lv_obj_center(obj);
+    lv_obj_add_event_cb(obj, intense_inc_event, LV_EVENT_SHORT_CLICKED, 0);
     btn_lbl = lv_label_create(btn1);
-    lv_label_set_text(btn_lbl, "button 1");
+    lv_obj_center(btn_lbl);
+    lv_label_set_text(btn_lbl, "Intense Inc");
 
-    lv_obj_t *btn2 = obj = lv_btn_create(right);
+    btn2 = obj = lv_btn_create(right);
+    lv_obj_set_size(obj, 120, 40);
     lv_obj_center(obj);
+    lv_obj_add_event_cb(obj, intense_dec_or_clear_event, LV_EVENT_SHORT_CLICKED, 0);
     btn_lbl = lv_label_create(btn2);
+    lv_obj_center(btn_lbl);
     lv_label_set_text(btn_lbl, "button 2");
 
     return cont;
