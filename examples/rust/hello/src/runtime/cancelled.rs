@@ -141,20 +141,14 @@ mod tests {
                 println!("Task B started");
 
                 for i in 1..=10 {
-                    let delay = Delay::new(Duration::from_millis(500)).fuse();
+                    Delay::new(Duration::from_millis(500)).await;
 
-                    pin_mut!(delay);
-
-                    select! {
-                        _ = delay => {
-                            println!("Task B step {i}");
-                            if token.check_cancelled().is_err() {
-                                println!("Task B noticed cancellation after step {i}");
-                                // Cleanup && Dispose
-                                cancelled_b.set(true);
-                                break;
-                            }
-                        }
+                    println!("Task B step {i}");
+                    if token.check_cancelled().is_err() {
+                        println!("Task B noticed cancellation after step {i}");
+                        // Cleanup && Dispose
+                        cancelled_b.set(true);
+                        break;
                     }
                 }
 
