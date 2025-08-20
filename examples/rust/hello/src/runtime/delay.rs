@@ -57,10 +57,15 @@ impl Future for Delay {
             // the waker each time. However, the `Delay` can move between
             // tasks on the executor, which could cause a stale waker pointing
             // to the wrong task, preventing `Delay` from waking up correctly.
-            //
-            // N.B. it's possible to check for this using the `Waker::will_wake`
-            // function, but we omit that here to keep things simple.
-            this.state.waker.replace(cx.waker().clone());
+            if this
+                .state
+                .waker
+                .as_ref()
+                .map(|w| !w.will_wake(cx.waker()))
+                .unwrap_or(true)
+            {
+                this.state.waker.replace(cx.waker().clone());
+            }
             Poll::Pending
         }
     }
