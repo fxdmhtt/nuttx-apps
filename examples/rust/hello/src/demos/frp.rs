@@ -1,5 +1,6 @@
 #![allow(static_mut_refs)]
 
+use std::cell::RefCell;
 use std::ffi::c_char;
 use std::time::Duration;
 use std::{ffi::CString, rc::Rc};
@@ -7,12 +8,13 @@ use std::{ffi::CString, rc::Rc};
 use async_executor::Task;
 use futures::future::LocalBoxFuture;
 use futures::stream::FuturesUnordered;
-use futures::{stream, FutureExt, StreamExt};
+use futures::{pin_mut, select, stream, FutureExt, StreamExt, TryStreamExt};
 use itertools_num::linspace;
-use reactive_cache::{effect, memo, signal, IEffect, Lazy};
+use reactive_cache::{effect, memo, ref_signal, signal, IEffect, Lazy};
 
 use crate::binding::lvgl::*;
 use crate::event;
+use crate::runtime::cancelled::CancellationTokenSource;
 use crate::runtime::delay::{delay, Delay};
 use crate::runtime::TaskRun;
 
@@ -58,7 +60,7 @@ signal!(
 
 #[no_mangle]
 pub extern "C" fn active_index_get() -> i32 {
-    *ACTIVE_INDEX_get()
+    ACTIVE_INDEX()
 }
 
 #[no_mangle]
@@ -68,7 +70,7 @@ pub extern "C" fn active_index_set(value: i32) -> bool {
 
 #[memo]
 fn state() -> State {
-    match active_index_get() {
+    match ACTIVE_INDEX() {
         0 => Some(Color::Red),
         1 => Some(Color::Green),
         2 => Some(Color::Blue),
@@ -79,20 +81,18 @@ fn state() -> State {
 }
 
 event!(switch_color_event, {
-    let id = active_index_get() + 1;
-    let id = if *RECOLOR_ANIMATION() && id == 4 {
+    let id = ACTIVE_INDEX() + 1;
+    let id = if RECOLOR_ANIMATION() && id == 4 {
         id + 1
     } else {
         id
     };
-    active_index_set(id % 5);
+    ACTIVE_INDEX_set(id % 5);
 });
 
 static mut TASKS: Lazy<FuturesUnordered<LocalBoxFuture<()>>> = Lazy::new(FuturesUnordered::new);
-
-fn tasks() -> &'static mut Lazy<FuturesUnordered<LocalBoxFuture<'static, ()>>> {
-    unsafe { &mut TASKS }
-}
+static mut CTS: Lazy<RefCell<CancellationTokenSource>> =
+    Lazy::new(|| RefCell::new(CancellationTokenSource::new()));
 
 fn tasks_cleanup_in_background() -> Task<()> {
     TaskRun(async move {
@@ -109,20 +109,25 @@ fn tasks_cleanup_in_background() -> Task<()> {
 }
 
 async fn list_item_fade(obj: *mut lv_obj_t, cnt: usize) {
-    stream::iter(linspace(255.0, 0.0, cnt).map(|x: f32| x.round() as u8))
-        .for_each(|x| async move {
-            unsafe { lv_obj_set_style_opa(obj, x, LV_PART_MAIN) };
-            Delay::new(Duration::from_millis(100)).await;
+    let token = unsafe { CTS.borrow() }.token();
+
+    let _ = stream::iter(linspace(255.0, 0.0, cnt).map(|x: f32| x.round() as u8))
+        .map(Ok)
+        .try_for_each(|x| {
+            let token = token.clone();
+            async move {
+                unsafe { lv_obj_set_style_opa(obj, x, LV_PART_MAIN) };
+                Delay::new(Duration::from_millis(100)).await;
+                token.check_cancelled()
+            }
         })
         .await;
-
-    unsafe { lv_obj_delete(obj) };
 }
 
 async fn intense_animation(target: u8, duration: Duration) {
     let delay = Duration::from_millis(100);
     let ticks = duration.div_duration_f32(delay) as i16;
-    let start = *INTENSE();
+    let start = INTENSE();
 
     let header = if target > start {
         "Increase color density"
@@ -151,10 +156,11 @@ async fn intense_animation(target: u8, duration: Duration) {
     RECOLOR_ANIMATION_set(false);
 
     list_item_fade(lbl, 15).await;
+    unsafe { lv_obj_delete(lbl) };
 }
 
 event!(intense_inc_event, async {
-    let intense = match *INTENSE() {
+    let intense = match INTENSE() {
         0 => Some(0x7f),
         0x7f => Some(0xff),
         0xff => None,
@@ -168,7 +174,7 @@ event!(intense_inc_event, async {
 event!(intense_dec_or_clear_event, async {
     match state() {
         Some(_) => {
-            let intense = match *INTENSE() {
+            let intense = match INTENSE() {
                 0 => None,
                 0x7f => Some(0),
                 0xff => Some(0x7f),
@@ -179,7 +185,9 @@ event!(intense_dec_or_clear_event, async {
             }
         }
         None => {
-            todo!()
+            let cts = unsafe { CTS.replace(CancellationTokenSource::new()) };
+            assert!(!cts.is_cancelled());
+            cts.cancel();
         }
     };
 });
@@ -193,7 +201,7 @@ event!(list_item_changed_event, e, {
 static mut EFFECTS: Lazy<Vec<Rc<dyn IEffect>>> = Lazy::new(|| {
     vec![
         effect!(|| {
-            let id = active_index_get();
+            let id = ACTIVE_INDEX();
             (0..5)
                 .map(|x| match x {
                     _ if x == id => lv_obj_add_state,
@@ -208,7 +216,7 @@ static mut EFFECTS: Lazy<Vec<Rc<dyn IEffect>>> = Lazy::new(|| {
             || {
                 let color = match state() {
                     Some(color) => {
-                        unsafe { lv_obj_set_style_image_recolor_opa(img, *INTENSE(), 0) };
+                        unsafe { lv_obj_set_style_image_recolor_opa(img, INTENSE(), 0) };
                         match color {
                             Color::Red => unsafe { lv_color_make_rs(0xff, 0, 0) },
                             Color::Green => unsafe { lv_color_make_rs(0, 0xff, 0) },
@@ -236,10 +244,19 @@ static mut EFFECTS: Lazy<Vec<Rc<dyn IEffect>>> = Lazy::new(|| {
             };
         }),
         effect!(|| {
-            match (state(), *RECOLOR_ANIMATION()) {
-                (None, _) => unsafe { lv_obj_add_state(btn1, LV_STATE_DISABLED) },
+            match (state(), RECOLOR_ANIMATION()) {
                 (_, true) => unsafe { lv_obj_add_state(btn1, LV_STATE_DISABLED) },
+                (None, _) => unsafe { lv_obj_add_state(btn1, LV_STATE_DISABLED) },
                 _ => unsafe { lv_obj_remove_state(btn1, LV_STATE_DISABLED) },
+            };
+        }),
+        effect!(|| {
+            match (state(), RECOLOR_ANIMATION()) {
+                (_, true) => unsafe { lv_obj_add_state(btn2, LV_STATE_DISABLED) },
+                (None, _) if LIST_ITEM_COUNT() == 0 => unsafe {
+                    lv_obj_add_state(btn2, LV_STATE_DISABLED)
+                },
+                _ => unsafe { lv_obj_remove_state(btn2, LV_STATE_DISABLED) },
             };
         }),
         effect!(|| {
@@ -262,8 +279,8 @@ static mut EFFECTS: Lazy<Vec<Rc<dyn IEffect>>> = Lazy::new(|| {
             unsafe { lv_obj_set_style_bg_color(btn2, color, LV_PART_MAIN) };
         }),
         effect!(|| {
-            let btns = unsafe { [btn2, no_color_btn] };
-            match *RECOLOR_ANIMATION() {
+            let btns = unsafe { [no_color_btn] };
+            match RECOLOR_ANIMATION() {
                 true => btns
                     .iter()
                     .for_each(|btn| unsafe { lv_obj_add_state(*btn, LV_STATE_DISABLED) }),
@@ -278,15 +295,23 @@ static mut EFFECTS: Lazy<Vec<Rc<dyn IEffect>>> = Lazy::new(|| {
                 .unwrap_or("Non Recolor!".to_string());
             let lbl =
                 unsafe { create_list_item(list, CString::new(text).unwrap().as_ptr() as *const _) };
+            let token = unsafe { CTS.borrow() }.token();
             let task = TaskRun(async move {
-                delay(5).await;
-                list_item_fade(lbl, 10).await;
+                let delay = delay(5).fuse();
+                let cancelled = token.cancelled().fuse();
+                pin_mut!(delay, cancelled);
+
+                select! {
+                    _ = delay => { list_item_fade(lbl, 10).await; },
+                    _ = cancelled => {},
+                }
+                unsafe { lv_obj_delete(lbl) };
             });
             unsafe { TASKS.push(task.boxed_local()) };
         }),
         effect!(|| {
             static mut HINT: Option<*mut lv_obj_t> = None;
-            match *LIST_ITEM_COUNT() {
+            match LIST_ITEM_COUNT() {
                 0 => {
                     if unsafe { HINT }.is_none() {
                         unsafe { HINT.replace(create_list_hint()) };
