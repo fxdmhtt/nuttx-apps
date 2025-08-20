@@ -2,7 +2,9 @@ pub mod delay;
 pub mod event;
 pub mod executor;
 
-use std::{ffi::c_void, ptr::null_mut};
+use std::{ffi::c_void, future::Future, ptr::null_mut};
+
+use async_executor::Task;
 
 use crate::runtime::executor::PriorityExecutor;
 
@@ -23,4 +25,11 @@ pub extern "C" fn rust_executor_drive() {
 pub extern "C" fn rust_register_loop(ui_loop: *mut c_void) {
     assert!(!ui_loop.is_null());
     unsafe { UI_LOOP = ui_loop }
+}
+
+#[allow(non_snake_case)]
+pub fn TaskRun<T: 'static>(future: impl Future<Output = T> + 'static) -> Task<T> {
+    let task = executor().spawn(future);
+    executor().try_tick_all();
+    task
 }

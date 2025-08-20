@@ -14,7 +14,7 @@ use reactive_cache::{effect, memo, signal, IEffect, Lazy};
 use crate::binding::lvgl::*;
 use crate::event;
 use crate::runtime::delay::{delay, Delay};
-use crate::runtime::executor;
+use crate::runtime::TaskRun;
 
 extern "C" {
     static mut radio_cont: *mut lv_obj_t;
@@ -95,7 +95,7 @@ fn tasks() -> &'static mut Lazy<FuturesUnordered<LocalBoxFuture<'static, ()>>> {
 }
 
 fn tasks_cleanup_in_background() -> Task<()> {
-    executor().spawn(async move {
+    TaskRun(async move {
         let mut id = 0;
         loop {
             if (unsafe { TASKS.next() }.await).is_some() {
@@ -105,10 +105,6 @@ fn tasks_cleanup_in_background() -> Task<()> {
                 delay(1).await;
             }
         }
-        // while let Some(result) = unsafe { TASKS.next() }.await {
-        //     println!("A mission completed! {result:?}");
-        // }
-        // println!("Exit!");
     })
 }
 
@@ -282,12 +278,11 @@ static mut EFFECTS: Lazy<Vec<Rc<dyn IEffect>>> = Lazy::new(|| {
                 .unwrap_or("Non Recolor!".to_string());
             let lbl =
                 unsafe { create_list_item(list, CString::new(text).unwrap().as_ptr() as *const _) };
-            let task = executor().spawn(async move {
+            let task = TaskRun(async move {
                 delay(5).await;
                 list_item_fade(lbl, 10).await;
             });
             unsafe { TASKS.push(task.boxed_local()) };
-            executor().try_tick_all();
         }),
         effect!(|| {
             static mut HINT: Option<*mut lv_obj_t> = None;
