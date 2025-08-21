@@ -232,6 +232,7 @@ static mut EFFECTS: Lazy<Vec<Rc<dyn IEffect>>> = Lazy::new(|| {
                 unsafe { lv_obj_set_style_image_recolor(img, color, 0) };
             },
             || {
+                state();
                 INTENSE();
             }
         ),
