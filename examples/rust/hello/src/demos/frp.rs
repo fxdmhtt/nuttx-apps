@@ -11,6 +11,7 @@ use futures::stream::FuturesUnordered;
 use futures::{pin_mut, select, stream, FutureExt, StreamExt, TryStreamExt};
 use itertools_num::linspace;
 use reactive_cache::{effect, memo, ref_signal, signal, IEffect, Lazy};
+use stack_cstr::cstr;
 
 use crate::binding::lvgl::*;
 use crate::event;
@@ -134,8 +135,8 @@ async fn intense_animation(target: u8, duration: Duration) {
     } else {
         "Decrease color density"
     };
-    let text = format!("{header} - {start}");
-    let lbl = unsafe { create_list_item(list, CString::new(text).unwrap().as_ptr() as *const _) };
+    let text = cstr!("{header} - {start}");
+    let lbl = unsafe { create_list_item(list, text.as_ptr()) };
 
     RECOLOR_ANIMATION_set(true);
 
@@ -145,8 +146,8 @@ async fn intense_animation(target: u8, duration: Duration) {
     .for_each(|cur| async move {
         INTENSE_set(cur);
 
-        let text = format!("{header} - {cur}");
-        unsafe { lv_checkbox_set_text(lbl, CString::new(text).unwrap().as_ptr() as *const _) };
+        let text = cstr!("{header} - {cur}");
+        unsafe { lv_checkbox_set_text(lbl, text.as_ptr()) };
 
         Delay::new(delay).await;
     })
@@ -237,12 +238,10 @@ static mut EFFECTS: Lazy<Vec<Rc<dyn IEffect>>> = Lazy::new(|| {
             }
         ),
         effect!(|| {
-            let color = state()
-                .map(|c| format!("Color {c:?}"))
-                .unwrap_or("Original Color".to_string());
-            unsafe {
-                lv_label_set_text(img_label, CString::new(color).unwrap().as_ptr() as *const _)
-            };
+            let color_s = state()
+                .map(|c| cstr!("Color {c:?}"))
+                .unwrap_or(cstr!("Original Color"));
+            unsafe { lv_label_set_text(img_label, color_s.as_ptr()) };
         }),
         effect!(|| {
             match (state(), RECOLOR_ANIMATION()) {
@@ -265,12 +264,7 @@ static mut EFFECTS: Lazy<Vec<Rc<dyn IEffect>>> = Lazy::new(|| {
                 Some(_) => "Intense Dec",
                 None => "Clear Log",
             };
-            unsafe {
-                lv_label_set_text(
-                    lv_obj_get_child(btn2, 0),
-                    CString::new(text).unwrap().as_ptr() as *const _,
-                )
-            };
+            unsafe { lv_label_set_text(lv_obj_get_child(btn2, 0), cstr!("{text}").as_ptr()) };
         }),
         effect!(|| {
             let color = match state() {
@@ -292,10 +286,9 @@ static mut EFFECTS: Lazy<Vec<Rc<dyn IEffect>>> = Lazy::new(|| {
         }),
         effect!(|| {
             let text = state()
-                .map(|c| format!("Recolor to {c:?}"))
-                .unwrap_or("Non Recolor!".to_string());
-            let lbl =
-                unsafe { create_list_item(list, CString::new(text).unwrap().as_ptr() as *const _) };
+                .map(|c| cstr!("Recolor to {c:?}"))
+                .unwrap_or(cstr!("Non Recolor!"));
+            let lbl = unsafe { create_list_item(list, text.as_ptr()) };
             let token = unsafe { CTS.borrow() }.token();
             let task = TaskRun(async move {
                 let delay = delay(5).fuse();
