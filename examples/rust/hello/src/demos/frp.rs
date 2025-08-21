@@ -60,12 +60,12 @@ signal!(
 );
 
 #[no_mangle]
-pub extern "C" fn active_index_get() -> i32 {
+extern "C" fn active_index_get() -> i32 {
     ACTIVE_INDEX()
 }
 
 #[no_mangle]
-pub extern "C" fn active_index_set(value: i32) -> bool {
+extern "C" fn active_index_set(value: i32) -> bool {
     ACTIVE_INDEX_set(value)
 }
 
@@ -322,7 +322,7 @@ static mut EFFECTS: Lazy<Vec<Rc<dyn IEffect>>> = Lazy::new(|| {
 });
 
 #[no_mangle]
-pub extern "C" fn frp_demo_rs_init() {
+extern "C" fn frp_demo_rs_init() {
     Lazy::force(unsafe { &EFFECTS });
 
     tasks_cleanup_in_background().detach();

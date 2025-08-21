@@ -1,6 +1,4 @@
-use std::ffi::c_void;
-
-use crate::runtime::{delay::delay, executor, rust_register_loop};
+use crate::runtime::{delay::delay, executor};
 
 async fn task_template(id: u64) {
     println!("[Coroutine {id}] Task A Start");
@@ -15,10 +13,7 @@ async fn task_template(id: u64) {
 }
 
 #[no_mangle]
-pub extern "C" fn demo_async_executor(ui_loop: *mut c_void) {
-    assert!(!ui_loop.is_null());
-    rust_register_loop(ui_loop);
-
+extern "C" fn demo_async_executor() {
     let task1 = executor().spawn(async {
         println!("[Coroutine 1] Begin");
         task_template(1).await;

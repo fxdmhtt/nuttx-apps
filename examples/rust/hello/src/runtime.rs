@@ -18,12 +18,12 @@ pub fn executor() -> &'static mut PriorityExecutor {
 }
 
 #[no_mangle]
-pub extern "C" fn rust_executor_drive() {
+extern "C" fn rust_executor_drive() {
     executor().try_tick_all()
 }
 
 #[no_mangle]
-pub extern "C" fn rust_register_loop(ui_loop: *mut c_void) {
+extern "C" fn rust_register_loop(ui_loop: *mut c_void) {
     assert!(!ui_loop.is_null());
     unsafe { UI_LOOP = ui_loop }
 }

@@ -103,9 +103,12 @@ static void lv_nuttx_uv_loop(uv_loop_t *loop, lv_nuttx_result_t *result)
   uv_info.uindev = result->utouch_indev;
 #endif
 
+  void rust_register_loop(void *);
+  rust_register_loop(loop);
+
   uv_async_init(loop, &async, _rust_executor_drive);
-  void demo_async_executor(uv_loop_t *);
-  demo_async_executor(loop);
+  void demo_async_executor(void);
+  demo_async_executor();
 
   void event_demo_main(void);
   event_demo_main();

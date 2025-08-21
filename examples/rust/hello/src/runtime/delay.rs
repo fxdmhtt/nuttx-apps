@@ -86,7 +86,7 @@ pub async fn delay(secs: u64) {
 }
 
 #[no_mangle]
-pub extern "C" fn rust_delay_wake(state: *mut c_void) {
+extern "C" fn rust_delay_wake(state: *mut c_void) {
     assert!(!state.is_null());
     let state = unsafe { &mut *(state as *mut State) };
 
