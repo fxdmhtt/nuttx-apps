@@ -38,6 +38,7 @@ lv_color_t lv_color_make_rs(uint8_t r, uint8_t g, uint8_t b)
 lv_obj_t *create_list_item(lv_obj_t *parent, const char *text)
 {
     lv_obj_t *item = lv_list_add_text(list, text);
+    lv_obj_add_flag(item, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_bg_color(item, lv_color_white(), 0);
     return item;
 }

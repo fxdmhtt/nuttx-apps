@@ -1,7 +1,7 @@
 #![allow(static_mut_refs)]
 
 use std::cell::RefCell;
-use std::ffi::c_char;
+use std::ffi::{c_char, CStr};
 use std::time::Duration;
 use std::{ffi::CString, rc::Rc};
 
@@ -14,10 +14,10 @@ use reactive_cache::{effect, memo, ref_signal, signal, IEffect, Lazy};
 use stack_cstr::cstr;
 
 use crate::binding::lvgl::*;
-use crate::event;
+use crate::event_decl;
 use crate::runtime::cancelled::CancellationTokenSource;
 use crate::runtime::delay::{delay, Delay};
-use crate::runtime::TaskRun;
+use crate::runtime::{event, TaskRun};
 
 extern "C" {
     static mut radio_cont: *mut lv_obj_t;
@@ -81,7 +81,7 @@ fn state() -> State {
     }
 }
 
-event!(switch_color_event, {
+event_decl!(switch_color_event, {
     let id = ACTIVE_INDEX() + 1;
     let id = if RECOLOR_ANIMATION() && id == 4 {
         id + 1
@@ -160,7 +160,7 @@ async fn intense_animation(target: u8, duration: Duration) {
     unsafe { lv_obj_delete(lbl) };
 }
 
-event!(intense_inc_event, async {
+event_decl!(intense_inc_event, async {
     let intense = match INTENSE() {
         0 => Some(0x7f),
         0x7f => Some(0xff),
@@ -172,7 +172,7 @@ event!(intense_inc_event, async {
     }
 });
 
-event!(intense_dec_or_clear_event, async {
+event_decl!(intense_dec_or_clear_event, async {
     match state() {
         Some(_) => {
             let intense = match INTENSE() {
@@ -193,7 +193,7 @@ event!(intense_dec_or_clear_event, async {
     };
 });
 
-event!(list_item_changed_event, e, {
+event_decl!(list_item_changed_event, e, {
     let obj = unsafe { lv_event_get_target(e) };
     let cnt = unsafe { lv_obj_get_child_count(obj) };
     LIST_ITEM_COUNT_set(cnt);
@@ -289,6 +289,32 @@ static mut EFFECTS: Lazy<Vec<Rc<dyn IEffect>>> = Lazy::new(|| {
                 .map(|c| cstr!("Recolor to {c:?}"))
                 .unwrap_or(cstr!("Non Recolor!"));
             let lbl = unsafe { create_list_item(list, text.as_ptr()) };
+
+            {
+                let item = lbl;
+                let evt1 = event::add(lbl, LV_EVENT_SHORT_CLICKED, move |e| {
+                    let obj = unsafe { lv_event_get_target(e) };
+                    assert_eq!(obj, item);
+                    let text = unsafe { CStr::from_ptr(lv_label_get_text(obj)) };
+                    println!("{text:?} Clicked!");
+                });
+                let evt2 = event::add(lbl, LV_EVENT_SHORT_CLICKED, |_| {});
+
+                assert_eq!(unsafe { lv_obj_get_event_count(lbl) }, 3);
+                assert_eq!(
+                    unsafe { lv_event_dsc_get_user_data(lv_obj_get_event_dsc(lbl, 0)) },
+                    std::ptr::null_mut()
+                );
+                assert_eq!(unsafe { lv_obj_get_event_dsc(lbl, 1) }, evt1);
+                assert_eq!(unsafe { lv_obj_get_event_dsc(lbl, 2) }, evt2);
+                assert!(std::ptr::fn_addr_eq(
+                    unsafe { lv_event_dsc_get_cb(lv_obj_get_event_dsc(lbl, 1)) },
+                    unsafe { lv_event_dsc_get_cb(lv_obj_get_event_dsc(lbl, 2)) }
+                ));
+
+                assert!(event::remove(lbl, evt2));
+            }
+
             let token = unsafe { CTS.borrow() }.token();
             let task = TaskRun(async move {
                 let delay = delay(5).fuse();
