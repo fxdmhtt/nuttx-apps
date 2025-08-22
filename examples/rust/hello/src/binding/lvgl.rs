@@ -3,16 +3,30 @@
 
 use std::ffi::{c_char, c_void};
 
+pub type lv_align_t = u8;
+pub type lv_anim_t = c_void;
+pub type lv_base_dir_t = u8;
+pub type lv_blend_mode_t = u8;
+pub type lv_border_side_t = u8;
+pub type lv_color_filter_dsc_t = c_void;
 pub type lv_event_cb_t = unsafe extern "C" fn(e: *mut lv_event_t);
 pub type lv_event_code_t = u32;
 pub type lv_event_dsc_t = c_void;
 pub type lv_event_t = c_void;
+pub type lv_font_t = c_void;
+pub type lv_grad_dir_t = u8;
+pub type lv_grad_dsc_t = c_void;
+pub type lv_image_colorkey_t = c_void;
+pub type lv_image_dsc_t = c_void;
 pub type lv_obj_t = c_void;
 pub type lv_obj_flag_t = u32;
 pub type lv_opa_t = u8;
+pub type lv_palette_t = u32;
 pub type lv_state_t = u16;
 pub type lv_style_selector_t = u32;
-pub type lv_palette_t = u32;
+pub type lv_style_transition_dsc_t = c_void;
+pub type lv_text_align_t = u8;
+pub type lv_text_decor_t = u8;
 
 pub const LV_STATE_DEFAULT: lv_state_t = 0x0000;
 pub const LV_STATE_CHECKED: lv_state_t = 0x0001;
@@ -180,6 +194,61 @@ pub const LV_OBJ_FLAG_USER_2: lv_obj_flag_t = 1 << 28;
 pub const LV_OBJ_FLAG_USER_3: lv_obj_flag_t = 1 << 29;
 pub const LV_OBJ_FLAG_USER_4: lv_obj_flag_t = 1 << 30;
 
+pub const LV_BORDER_SIDE_NONE: lv_border_side_t = 0x00;
+pub const LV_BORDER_SIDE_BOTTOM: lv_border_side_t = 0x01;
+pub const LV_BORDER_SIDE_TOP: lv_border_side_t = 0x02;
+pub const LV_BORDER_SIDE_LEFT: lv_border_side_t = 0x04;
+pub const LV_BORDER_SIDE_RIGHT: lv_border_side_t = 0x08;
+pub const LV_BORDER_SIDE_FULL: lv_border_side_t = 0x0F;
+pub const LV_BORDER_SIDE_INTERNAL: lv_border_side_t = 0x10;
+
+pub const LV_ALIGN_DEFAULT: lv_align_t = 0;
+pub const LV_ALIGN_TOP_LEFT: lv_align_t = 1;
+pub const LV_ALIGN_TOP_MID: lv_align_t = 2;
+pub const LV_ALIGN_TOP_RIGHT: lv_align_t = 3;
+pub const LV_ALIGN_BOTTOM_LEFT: lv_align_t = 4;
+pub const LV_ALIGN_BOTTOM_MID: lv_align_t = 5;
+pub const LV_ALIGN_BOTTOM_RIGHT: lv_align_t = 6;
+pub const LV_ALIGN_LEFT_MID: lv_align_t = 7;
+pub const LV_ALIGN_RIGHT_MID: lv_align_t = 8;
+pub const LV_ALIGN_CENTER: lv_align_t = 9;
+pub const LV_ALIGN_OUT_TOP_LEFT: lv_align_t = 10;
+pub const LV_ALIGN_OUT_TOP_MID: lv_align_t = 11;
+pub const LV_ALIGN_OUT_TOP_RIGHT: lv_align_t = 12;
+pub const LV_ALIGN_OUT_BOTTOM_LEFT: lv_align_t = 13;
+pub const LV_ALIGN_OUT_BOTTOM_MID: lv_align_t = 14;
+pub const LV_ALIGN_OUT_BOTTOM_RIGHT: lv_align_t = 15;
+pub const LV_ALIGN_OUT_LEFT_TOP: lv_align_t = 16;
+pub const LV_ALIGN_OUT_LEFT_MID: lv_align_t = 17;
+pub const LV_ALIGN_OUT_LEFT_BOTTOM: lv_align_t = 18;
+pub const LV_ALIGN_OUT_RIGHT_TOP: lv_align_t = 19;
+pub const LV_ALIGN_OUT_RIGHT_MID: lv_align_t = 20;
+pub const LV_ALIGN_OUT_RIGHT_BOTTOM: lv_align_t = 21;
+
+pub const LV_GRAD_DIR_NONE: lv_grad_dir_t = 0;
+pub const LV_GRAD_DIR_VER: lv_grad_dir_t = 1;
+pub const LV_GRAD_DIR_HOR: lv_grad_dir_t = 2;
+
+pub const LV_TEXT_DECOR_NONE: lv_text_decor_t = 0x00;
+pub const LV_TEXT_DECOR_UNDERLINE: lv_text_decor_t = 0x01;
+pub const LV_TEXT_DECOR_STRIKETHROUGH: lv_text_decor_t = 0x02;
+
+pub const LV_TEXT_ALIGN_AUTO: lv_text_align_t = 0;
+pub const LV_TEXT_ALIGN_LEFT: lv_text_align_t = 1;
+pub const LV_TEXT_ALIGN_CENTER: lv_text_align_t = 2;
+pub const LV_TEXT_ALIGN_RIGHT: lv_text_align_t = 3;
+
+pub const LV_BLEND_MODE_NORMAL: lv_blend_mode_t = 0;
+pub const LV_BLEND_MODE_ADDITIVE: lv_blend_mode_t = 1;
+pub const LV_BLEND_MODE_SUBTRACTIVE: lv_blend_mode_t = 2;
+pub const LV_BLEND_MODE_MULTIPLY: lv_blend_mode_t = 3;
+
+pub const LV_BASE_DIR_LTR: lv_base_dir_t = 0x00;
+pub const LV_BASE_DIR_RTL: lv_base_dir_t = 0x01;
+pub const LV_BASE_DIR_AUTO: lv_base_dir_t = 0x02;
+pub const LV_BASE_DIR_NEUTRAL: lv_base_dir_t = 0x20;
+pub const LV_BASE_DIR_WEAK: lv_base_dir_t = 0x21;
+
 #[repr(C)]
 pub struct lv_color_t {
     blue: u8,
@@ -221,7 +290,279 @@ extern "C" {
     pub fn lv_obj_add_state(obj: *mut lv_obj_t, state: lv_state_t);
     pub fn lv_obj_remove_state(obj: *mut lv_obj_t, state: lv_state_t);
     pub fn lv_obj_set_state(obj: *mut lv_obj_t, state: lv_state_t, v: bool);
-    pub fn lv_obj_set_style_opa(obj: *mut lv_obj_t, value: lv_opa_t, selector: lv_style_selector_t);
+    pub fn lv_obj_set_style_width(obj: *mut lv_obj_t, value: i32, selector: lv_style_selector_t);
+    pub fn lv_obj_set_style_min_width(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_max_width(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_height(obj: *mut lv_obj_t, value: i32, selector: lv_style_selector_t);
+    pub fn lv_obj_set_style_min_height(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_max_height(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_length(obj: *mut lv_obj_t, value: i32, selector: lv_style_selector_t);
+    pub fn lv_obj_set_style_x(obj: *mut lv_obj_t, value: i32, selector: lv_style_selector_t);
+    pub fn lv_obj_set_style_y(obj: *mut lv_obj_t, value: i32, selector: lv_style_selector_t);
+    pub fn lv_obj_set_style_align(
+        obj: *mut lv_obj_t,
+        value: lv_align_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_transform_width(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_transform_height(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_translate_x(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_translate_y(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_transform_scale_x(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_transform_scale_y(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_transform_rotation(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_transform_pivot_x(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_transform_pivot_y(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_transform_skew_x(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_transform_skew_y(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_pad_top(obj: *mut lv_obj_t, value: i32, selector: lv_style_selector_t);
+    pub fn lv_obj_set_style_pad_bottom(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_pad_left(obj: *mut lv_obj_t, value: i32, selector: lv_style_selector_t);
+    pub fn lv_obj_set_style_pad_right(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_pad_row(obj: *mut lv_obj_t, value: i32, selector: lv_style_selector_t);
+    pub fn lv_obj_set_style_pad_column(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_margin_top(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_margin_bottom(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_margin_left(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_margin_right(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_bg_color(
+        obj: *mut lv_obj_t,
+        value: lv_color_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_bg_opa(
+        obj: *mut lv_obj_t,
+        value: lv_opa_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_bg_grad_color(
+        obj: *mut lv_obj_t,
+        value: lv_color_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_bg_grad_dir(
+        obj: *mut lv_obj_t,
+        value: lv_grad_dir_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_bg_main_stop(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_bg_grad_stop(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_bg_main_opa(
+        obj: *mut lv_obj_t,
+        value: lv_opa_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_bg_grad_opa(
+        obj: *mut lv_obj_t,
+        value: lv_opa_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_bg_grad(
+        obj: *mut lv_obj_t,
+        value: *const lv_grad_dsc_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_bg_image_src(
+        obj: *mut lv_obj_t,
+        value: *const c_void,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_bg_image_opa(
+        obj: *mut lv_obj_t,
+        value: lv_opa_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_bg_image_recolor(
+        obj: *mut lv_obj_t,
+        value: lv_color_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_bg_image_recolor_opa(
+        obj: *mut lv_obj_t,
+        value: lv_opa_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_bg_image_tiled(
+        obj: *mut lv_obj_t,
+        value: bool,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_border_color(
+        obj: *mut lv_obj_t,
+        value: lv_color_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_border_opa(
+        obj: *mut lv_obj_t,
+        value: lv_opa_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_border_width(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_border_side(
+        obj: *mut lv_obj_t,
+        value: lv_border_side_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_border_post(
+        obj: *mut lv_obj_t,
+        value: bool,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_outline_width(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_outline_color(
+        obj: *mut lv_obj_t,
+        value: lv_color_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_outline_opa(
+        obj: *mut lv_obj_t,
+        value: lv_opa_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_outline_pad(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_shadow_width(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_shadow_offset_x(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_shadow_offset_y(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_shadow_spread(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_shadow_color(
+        obj: *mut lv_obj_t,
+        value: lv_color_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_shadow_opa(
+        obj: *mut lv_obj_t,
+        value: lv_opa_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_image_opa(
+        obj: *mut lv_obj_t,
+        value: lv_opa_t,
+        selector: lv_style_selector_t,
+    );
     pub fn lv_obj_set_style_image_recolor(
         obj: *mut lv_obj_t,
         value: lv_color_t,
@@ -232,9 +573,157 @@ extern "C" {
         value: lv_opa_t,
         selector: lv_style_selector_t,
     );
-    pub fn lv_obj_set_style_bg_color(
+    pub fn lv_obj_set_style_image_colorkey(
+        obj: *mut lv_obj_t,
+        value: *const lv_image_colorkey_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_line_width(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_line_dash_width(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_line_dash_gap(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_line_rounded(
+        obj: *mut lv_obj_t,
+        value: bool,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_line_color(
         obj: *mut lv_obj_t,
         value: lv_color_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_line_opa(
+        obj: *mut lv_obj_t,
+        value: lv_opa_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_arc_width(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_arc_rounded(
+        obj: *mut lv_obj_t,
+        value: bool,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_arc_color(
+        obj: *mut lv_obj_t,
+        value: lv_color_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_arc_opa(
+        obj: *mut lv_obj_t,
+        value: lv_opa_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_arc_image_src(
+        obj: *mut lv_obj_t,
+        value: *const c_void,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_text_color(
+        obj: *mut lv_obj_t,
+        value: lv_color_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_text_opa(
+        obj: *mut lv_obj_t,
+        value: lv_opa_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_text_font(
+        obj: *mut lv_obj_t,
+        value: *const lv_font_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_text_letter_space(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_text_line_space(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_text_decor(
+        obj: *mut lv_obj_t,
+        value: lv_text_decor_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_text_align(
+        obj: *mut lv_obj_t,
+        value: lv_text_align_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_radius(obj: *mut lv_obj_t, value: i32, selector: lv_style_selector_t);
+    pub fn lv_obj_set_style_clip_corner(
+        obj: *mut lv_obj_t,
+        value: bool,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_opa(obj: *mut lv_obj_t, value: lv_opa_t, selector: lv_style_selector_t);
+    pub fn lv_obj_set_style_opa_layered(
+        obj: *mut lv_obj_t,
+        value: lv_opa_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_color_filter_dsc(
+        obj: *mut lv_obj_t,
+        value: *const lv_color_filter_dsc_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_color_filter_opa(
+        obj: *mut lv_obj_t,
+        value: lv_opa_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_anim(
+        obj: *mut lv_obj_t,
+        value: *const lv_anim_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_anim_duration(
+        obj: *mut lv_obj_t,
+        value: i32,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_transition(
+        obj: *mut lv_obj_t,
+        value: *const lv_style_transition_dsc_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_blend_mode(
+        obj: *mut lv_obj_t,
+        value: lv_blend_mode_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_layout(obj: *mut lv_obj_t, value: u16, selector: lv_style_selector_t);
+    pub fn lv_obj_set_style_base_dir(
+        obj: *mut lv_obj_t,
+        value: lv_base_dir_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_bitmap_mask_src(
+        obj: *mut lv_obj_t,
+        value: *const lv_image_dsc_t,
+        selector: lv_style_selector_t,
+    );
+    pub fn lv_obj_set_style_rotary_sensitivity(
+        obj: *mut lv_obj_t,
+        value: i32,
         selector: lv_style_selector_t,
     );
     pub fn lv_palette_main(p: lv_palette_t) -> lv_color_t;

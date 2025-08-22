@@ -2,8 +2,8 @@
 
 use std::cell::RefCell;
 use std::ffi::{c_char, CStr};
+use std::rc::Rc;
 use std::time::Duration;
-use std::{ffi::CString, rc::Rc};
 
 use async_executor::Task;
 use futures::future::LocalBoxFuture;
@@ -14,10 +14,10 @@ use reactive_cache::{effect, memo, ref_signal, signal, IEffect, Lazy};
 use stack_cstr::cstr;
 
 use crate::binding::lvgl::*;
-use crate::event_decl;
 use crate::runtime::cancelled::CancellationTokenSource;
 use crate::runtime::delay::{delay, Delay};
 use crate::runtime::{event, TaskRun};
+use crate::*;
 
 extern "C" {
     static mut radio_cont: *mut lv_obj_t;
@@ -213,35 +213,27 @@ static mut EFFECTS: Lazy<Vec<Rc<dyn IEffect>>> = Lazy::new(|| {
                     f(lv_obj_get_child(radio_cont, id), LV_STATE_CHECKED)
                 });
         }),
-        effect!(
-            || {
-                let color = match state() {
-                    Some(color) => {
-                        unsafe { lv_obj_set_style_image_recolor_opa(img, INTENSE(), 0) };
-                        match color {
-                            Color::Red => unsafe { lv_color_make_rs(0xff, 0, 0) },
-                            Color::Green => unsafe { lv_color_make_rs(0, 0xff, 0) },
-                            Color::Blue => unsafe { lv_color_make_rs(0, 0, 0xff) },
-                            Color::Yellow => unsafe { lv_color_make_rs(0xff, 0xff, 0) },
-                        }
-                    }
-                    None => {
-                        unsafe { lv_obj_set_style_image_recolor_opa(img, 0, 0) };
-                        unsafe { lv_color_make_rs(0, 0, 0) }
-                    }
-                };
-                unsafe { lv_obj_set_style_image_recolor(img, color, 0) };
-            },
-            || {
-                state();
-                INTENSE();
+        BindingImageRecolor!(unsafe { img }, {
+            match state() {
+                Some(color) => match color {
+                    Color::Red => unsafe { lv_color_make_rs(0xff, 0, 0) },
+                    Color::Green => unsafe { lv_color_make_rs(0, 0xff, 0) },
+                    Color::Blue => unsafe { lv_color_make_rs(0, 0, 0xff) },
+                    Color::Yellow => unsafe { lv_color_make_rs(0xff, 0xff, 0) },
+                },
+                None => unsafe { lv_color_make_rs(0, 0, 0) },
             }
-        ),
-        effect!(|| {
-            let color_s = state()
+        }),
+        BindingImageRecolorOpa!(unsafe { img }, {
+            match (state(), INTENSE()) {
+                (Some(_), intense) => intense,
+                (None, _) => 0,
+            }
+        }),
+        BindingText!(unsafe { img_label }, {
+            state()
                 .map(|c| cstr!("Color {c:?}"))
-                .unwrap_or(cstr!("Original Color"));
-            unsafe { lv_label_set_text(img_label, color_s.as_ptr()) };
+                .unwrap_or(cstr!("Original Color"))
         }),
         effect!(|| {
             match (state(), RECOLOR_ANIMATION()) {
@@ -259,19 +251,17 @@ static mut EFFECTS: Lazy<Vec<Rc<dyn IEffect>>> = Lazy::new(|| {
                 _ => unsafe { lv_obj_remove_state(btn2, LV_STATE_DISABLED) },
             };
         }),
-        effect!(|| {
-            let text = match state() {
-                Some(_) => "Intense Dec",
-                None => "Clear Log",
-            };
-            unsafe { lv_label_set_text(lv_obj_get_child(btn2, 0), cstr!("{text}").as_ptr()) };
+        BindingText!(unsafe { lv_obj_get_child(btn2, 0) }, {
+            match state() {
+                Some(_) => cstr!("Intense Dec"),
+                None => cstr!("Clear Log"),
+            }
         }),
-        effect!(|| {
-            let color = match state() {
+        BindingBgColor!(unsafe { btn2 }, {
+            match state() {
                 Some(_) => unsafe { lv_palette_main(LV_PALETTE_BLUE) },
                 None => unsafe { lv_palette_main(LV_PALETTE_RED) },
-            };
-            unsafe { lv_obj_set_style_bg_color(btn2, color, LV_PART_MAIN) };
+            }
         }),
         effect!(|| {
             let btns = unsafe { [no_color_btn] };

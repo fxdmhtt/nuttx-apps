@@ -2,6 +2,7 @@ pub mod cancelled;
 pub mod delay;
 pub mod event;
 pub mod executor;
+pub mod mvvm;
 
 use std::{ffi::c_void, future::Future, ptr::null_mut};
 
