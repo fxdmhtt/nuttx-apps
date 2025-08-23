@@ -56,7 +56,7 @@ endif
 
 WD := ${shell echo $(CURDIR) | sed -e 's/ /\\ /g'}
 
-CONFIG_GRAPH_LVGL_URL ?= "https://github.com/open-vela/apps_graphics_lvgl/archive/refs/heads"
+CONFIG_GRAPH_LVGL_URL ?= "https://github.com/fxdmhtt/apps_graphics_lvgl/archive/refs/heads"
 
 LVGL_VERSION = dev
 LVGL_TARBALL = $(LVGL_VERSION).zip
