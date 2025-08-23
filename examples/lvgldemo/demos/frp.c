@@ -19,6 +19,7 @@ lv_obj_t *no_color_btn;
 lv_obj_t *btn1;
 lv_obj_t *btn2;
 lv_obj_t *list;
+lv_obj_t *slider;
 
 int32_t active_index_get(void);
 bool active_index_set(int32_t);
@@ -89,6 +90,16 @@ static lv_obj_t *radiobutton_create(lv_obj_t *parent, const char *txt)
     return obj;
 }
 
+static lv_obj_t *create_slider(lv_obj_t *parent, lv_color_t color)
+{
+    lv_obj_t *slider = lv_slider_create(parent);
+    lv_slider_set_range(slider, 0, 255);
+    lv_obj_set_size(slider, 10, LV_PCT(60));
+    lv_obj_set_style_bg_color(slider, color, LV_PART_KNOB);
+    lv_obj_set_style_bg_color(slider, lv_color_darken(color, LV_OPA_40), LV_PART_INDICATOR);
+    return slider;
+}
+
 static lv_obj_t *page_create(lv_obj_t *parent, int width, int height)
 {
     lv_style_init(&style_radio);
@@ -128,14 +139,20 @@ static lv_obj_t *page_create(lv_obj_t *parent, int width, int height)
     lv_obj_t *left = obj = lv_obj_create(tier1);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
-    lv_obj_set_size(obj, lv_pct(40), lv_pct(100));
+    lv_obj_set_size(obj, lv_pct(30), lv_pct(100));
     lv_obj_set_pos(obj, 0, 0);
+
+    lv_obj_t *middle = obj = lv_obj_create(tier1);
+    lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
+    lv_obj_set_size(obj, lv_pct(10), lv_pct(100));
+    lv_obj_align_to(obj, left, LV_ALIGN_OUT_RIGHT_TOP, 0, 0);
 
     lv_obj_t *right = obj = lv_obj_create(tier1);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
     lv_obj_set_size(obj, lv_pct(60), lv_pct(100));
-    lv_obj_align_to(obj, left, LV_ALIGN_OUT_RIGHT_TOP, 0, 0);
+    lv_obj_align_to(obj, middle, LV_ALIGN_OUT_RIGHT_TOP, 0, 0);
 
     lv_obj_t *up = obj = lv_obj_create(left);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
@@ -155,6 +172,9 @@ static lv_obj_t *page_create(lv_obj_t *parent, int width, int height)
     lv_image_set_src(img, &img_cogwheel_argb);
 
     img_label = obj = lv_label_create(down);
+    lv_obj_center(obj);
+
+    slider = obj = create_slider(middle, lv_palette_main(LV_PALETTE_GREY));
     lv_obj_center(obj);
 
     list = obj = lv_list_create(right);

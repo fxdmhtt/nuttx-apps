@@ -1,3 +1,5 @@
+#![feature(macro_metavar_expr_concat)]
+
 mod binding;
 mod demos;
 mod runtime;

@@ -10,7 +10,7 @@ use futures::future::LocalBoxFuture;
 use futures::stream::FuturesUnordered;
 use futures::{pin_mut, select, stream, FutureExt, StreamExt, TryStreamExt};
 use itertools_num::linspace;
-use reactive_cache::{effect, memo, ref_signal, signal, IEffect, Lazy};
+use reactive_cache::{effect, memo, ref_signal, signal, Effect, Lazy};
 use stack_cstr::cstr;
 
 use crate::binding::lvgl::*;
@@ -27,6 +27,7 @@ extern "C" {
     static mut btn2: *mut lv_obj_t;
     static mut no_color_btn: *mut lv_obj_t;
     static mut list: *mut lv_obj_t;
+    static mut slider: *mut lv_obj_t;
 
     fn lv_color_make_rs(r: u8, g: u8, b: u8) -> lv_color_t;
     fn create_list_item(parent: *mut lv_obj_t, text: *const c_char) -> *mut lv_obj_t;
@@ -48,7 +49,7 @@ signal!(
 );
 
 signal!(
-    static mut INTENSE: u8 = 0x7f;
+    static mut INTENSE: lv_opa_t = 0x7f;
 );
 
 signal!(
@@ -92,7 +93,9 @@ event_decl!(switch_color_event, {
 });
 
 static mut TASKS: Lazy<FuturesUnordered<LocalBoxFuture<()>>> = Lazy::new(FuturesUnordered::new);
-static mut CTS: Lazy<RefCell<CancellationTokenSource>> =
+static mut CTS_FADE: Lazy<RefCell<CancellationTokenSource>> =
+    Lazy::new(|| RefCell::new(CancellationTokenSource::new()));
+static mut CTS_ANIM: Lazy<RefCell<CancellationTokenSource>> =
     Lazy::new(|| RefCell::new(CancellationTokenSource::new()));
 
 fn tasks_cleanup_in_background() -> Task<()> {
@@ -109,8 +112,14 @@ fn tasks_cleanup_in_background() -> Task<()> {
     })
 }
 
+fn cts_cancel_and_renew(cts: &'static mut Lazy<RefCell<CancellationTokenSource>>) {
+    let old = cts.replace(CancellationTokenSource::new());
+    assert!(!old.is_cancelled());
+    old.cancel();
+}
+
 async fn list_item_fade(obj: *mut lv_obj_t, cnt: usize) {
-    let token = unsafe { CTS.borrow() }.token();
+    let token = unsafe { CTS_FADE.borrow() }.token();
 
     let _ = stream::iter(linspace(255.0, 0.0, cnt).map(|x: f32| x.round() as u8))
         .map(Ok)
@@ -126,8 +135,10 @@ async fn list_item_fade(obj: *mut lv_obj_t, cnt: usize) {
 }
 
 async fn intense_animation(target: u8, duration: Duration) {
-    let delay = Duration::from_millis(100);
-    let ticks = duration.div_duration_f32(delay) as i16;
+    let token = unsafe { CTS_ANIM.borrow() }.token();
+
+    let delay_anim = Duration::from_millis(100);
+    let ticks = duration.div_duration_f32(delay_anim) as i16;
     let start = INTENSE();
 
     let header = if target > start {
@@ -140,55 +151,54 @@ async fn intense_animation(target: u8, duration: Duration) {
 
     RECOLOR_ANIMATION_set(true);
 
-    stream::iter(
+    let _ = stream::iter(
         linspace(start as f32, target as f32, ticks as usize).map(|x: f32| x.round() as u8),
     )
-    .for_each(|cur| async move {
-        INTENSE_set(cur);
+    .map(Ok)
+    .try_for_each(|cur| {
+        let token = token.clone();
 
-        let text = cstr!("{header} - {cur}");
-        unsafe { lv_checkbox_set_text(lbl, text.as_ptr()) };
+        async move {
+            INTENSE_set(cur);
 
-        Delay::new(delay).await;
+            let text = cstr!("{header} - {cur}");
+            unsafe { lv_checkbox_set_text(lbl, text.as_ptr()) };
+
+            Delay::new(delay_anim).await;
+            token.check_cancelled()
+        }
     })
     .await;
-    INTENSE_set(target);
+    if token.is_cancelled() {
+        let cur = INTENSE();
+        let text = cstr!("{header} - {cur}");
+        unsafe { lv_checkbox_set_text(lbl, text.as_ptr()) };
+    } else {
+        INTENSE_set(target);
+    }
 
     RECOLOR_ANIMATION_set(false);
 
+    delay(1).await;
     list_item_fade(lbl, 15).await;
     unsafe { lv_obj_delete(lbl) };
 }
 
 event_decl!(intense_inc_event, async {
-    let intense = match INTENSE() {
-        0 => Some(0x7f),
-        0x7f => Some(0xff),
-        0xff => None,
-        _ => unreachable!(),
-    };
-    if let Some(intense) = intense {
-        intense_animation(intense, Duration::from_secs(5)).await;
+    if INTENSE() < 0xff {
+        intense_animation(0xff, Duration::from_secs(5)).await;
     }
 });
 
 event_decl!(intense_dec_or_clear_event, async {
     match state() {
         Some(_) => {
-            let intense = match INTENSE() {
-                0 => None,
-                0x7f => Some(0),
-                0xff => Some(0x7f),
-                _ => unreachable!(),
-            };
-            if let Some(intense) = intense {
-                intense_animation(intense, Duration::from_secs(5)).await;
+            if INTENSE() > 0 {
+                intense_animation(0, Duration::from_secs(5)).await;
             }
         }
         None => {
-            let cts = unsafe { CTS.replace(CancellationTokenSource::new()) };
-            assert!(!cts.is_cancelled());
-            cts.cancel();
+            cts_cancel_and_renew(unsafe { &mut CTS_FADE });
         }
     };
 });
@@ -199,7 +209,7 @@ event_decl!(list_item_changed_event, e, {
     LIST_ITEM_COUNT_set(cnt);
 });
 
-static mut EFFECTS: Lazy<Vec<Rc<dyn IEffect>>> = Lazy::new(|| {
+static mut EFFECTS: Lazy<Vec<Rc<Effect>>> = Lazy::new(|| {
     vec![
         effect!(|| {
             let id = ACTIVE_INDEX();
@@ -212,6 +222,19 @@ static mut EFFECTS: Lazy<Vec<Rc<dyn IEffect>>> = Lazy::new(|| {
                 .for_each(|(f, id)| unsafe {
                     f(lv_obj_get_child(radio_cont, id), LV_STATE_CHECKED)
                 });
+        }),
+        BindingSliderValue!(
+            unsafe { slider },
+            INTENSE,
+            ConvertBack | v | {
+                cts_cancel_and_renew(unsafe { &mut CTS_ANIM });
+                v
+            }
+        ),
+        effect!(|| {
+            unsafe {
+                lv_obj_update_flag(slider, LV_OBJ_FLAG_HIDDEN, state().is_none());
+            };
         }),
         BindingImageRecolor!(unsafe { img }, {
             match state() {
@@ -236,18 +259,20 @@ static mut EFFECTS: Lazy<Vec<Rc<dyn IEffect>>> = Lazy::new(|| {
                 .unwrap_or(cstr!("Original Color"))
         }),
         effect!(|| {
-            match (state(), RECOLOR_ANIMATION()) {
-                (_, true) => unsafe { lv_obj_add_state(btn1, LV_STATE_DISABLED) },
-                (None, _) => unsafe { lv_obj_add_state(btn1, LV_STATE_DISABLED) },
+            match (state(), RECOLOR_ANIMATION(), INTENSE()) {
+                (_, true, _) => unsafe { lv_obj_add_state(btn1, LV_STATE_DISABLED) },
+                (None, _, _) => unsafe { lv_obj_add_state(btn1, LV_STATE_DISABLED) },
+                (Some(_), _, 0xff) => unsafe { lv_obj_add_state(btn1, LV_STATE_DISABLED) },
                 _ => unsafe { lv_obj_remove_state(btn1, LV_STATE_DISABLED) },
             };
         }),
         effect!(|| {
-            match (state(), RECOLOR_ANIMATION()) {
-                (_, true) => unsafe { lv_obj_add_state(btn2, LV_STATE_DISABLED) },
-                (None, _) if LIST_ITEM_COUNT() == 0 => unsafe {
+            match (state(), RECOLOR_ANIMATION(), INTENSE()) {
+                (_, true, _) => unsafe { lv_obj_add_state(btn2, LV_STATE_DISABLED) },
+                (None, _, _) if LIST_ITEM_COUNT() == 0 => unsafe {
                     lv_obj_add_state(btn2, LV_STATE_DISABLED)
                 },
+                (Some(_), _, 0) => unsafe { lv_obj_add_state(btn2, LV_STATE_DISABLED) },
                 _ => unsafe { lv_obj_remove_state(btn2, LV_STATE_DISABLED) },
             };
         }),
@@ -305,7 +330,7 @@ static mut EFFECTS: Lazy<Vec<Rc<dyn IEffect>>> = Lazy::new(|| {
                 assert!(event::remove(lbl, evt2));
             }
 
-            let token = unsafe { CTS.borrow() }.token();
+            let token = unsafe { CTS_FADE.borrow() }.token();
             let task = TaskRun(async move {
                 let delay = delay(5).fuse();
                 let cancelled = token.cancelled().fuse();

@@ -10,6 +10,34 @@ macro_rules! BindingText {
 }
 
 #[macro_export]
+macro_rules! BindingSliderValue {
+    ($obj:expr, $signal:ident, Convert $Convert:expr, ConvertBack $ConvertBack:expr) => {{
+        $crate::runtime::event::add($obj, LV_EVENT_VALUE_CHANGED, |e| {
+            let obj = unsafe { lv_event_get_target(e) };
+            let value = unsafe { lv_bar_get_value(obj) } as u8; // Refer to `lv_slider_get_value`
+            let val = $ConvertBack(value);
+            ${concat($signal, _set)}(val);
+        });
+
+        reactive_cache::effect!(|| {
+            let obj = $obj;
+            let value = *${concat($signal, _get)}();
+            let val = $Convert(value);
+            unsafe { lv_bar_set_value(obj, val.into(), LV_ANIM_OFF) }; // Refer to `lv_slider_set_value`
+        })
+    }};
+    ($obj:expr, $signal:ident, ConvertBack $ConvertBack:expr) => {
+        BindingSliderValue!($obj, $signal, Convert |v| v, ConvertBack $ConvertBack)
+    };
+    ($obj:expr, $signal:ident, Convert $Convert:expr) => {
+        BindingSliderValue!($obj, $signal, Convert $Convert, ConvertBack |v| v)
+    };
+    ($obj:expr, $signal:ident) => {{
+        BindingSliderValue!($obj, $signal, Convert |v| v, ConvertBack |v| v)
+    }};
+}
+
+#[macro_export]
 macro_rules! BindingStyle {
     ($obj:expr, $part:ident, $setter:ident, $body:block) => {
         reactive_cache::effect!(|| {

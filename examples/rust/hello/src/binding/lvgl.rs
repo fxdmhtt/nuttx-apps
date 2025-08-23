@@ -4,6 +4,7 @@
 use std::ffi::{c_char, c_void};
 
 pub type lv_align_t = u8;
+pub type lv_anim_enable_t = u8;
 pub type lv_anim_t = c_void;
 pub type lv_base_dir_t = u8;
 pub type lv_blend_mode_t = u8;
@@ -249,6 +250,9 @@ pub const LV_BASE_DIR_AUTO: lv_base_dir_t = 0x02;
 pub const LV_BASE_DIR_NEUTRAL: lv_base_dir_t = 0x20;
 pub const LV_BASE_DIR_WEAK: lv_base_dir_t = 0x21;
 
+pub const LV_ANIM_OFF: lv_anim_enable_t = 0;
+pub const LV_ANIM_ON: lv_anim_enable_t = 1;
+
 #[repr(C)]
 pub struct lv_color_t {
     blue: u8,
@@ -257,6 +261,8 @@ pub struct lv_color_t {
 }
 
 extern "C" {
+    pub fn lv_bar_get_value(obj: *const lv_obj_t) -> i32;
+    pub fn lv_bar_set_value(obj: *mut lv_obj_t, value: i32, anim: lv_anim_enable_t);
     pub fn lv_checkbox_set_text(obj: *mut lv_obj_t, txt: *const c_char);
     pub fn lv_event_get_code(e: *mut lv_event_t) -> lv_event_code_t;
     pub fn lv_event_get_current_target(e: *mut lv_event_t) -> *mut c_void;
