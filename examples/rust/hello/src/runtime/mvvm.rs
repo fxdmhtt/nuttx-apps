@@ -11,8 +11,8 @@ macro_rules! BindingText {
 
 #[macro_export]
 macro_rules! BindingSliderValue {
-    ($obj:expr, $signal:ident, Convert $Convert:expr, ConvertBack $ConvertBack:expr) => {{
-        $crate::runtime::event::add($obj, LV_EVENT_VALUE_CHANGED, |e| {
+    ($obj:expr, $signal:ident, $event:ident, Convert $Convert:expr, ConvertBack $ConvertBack:expr) => {{
+        $crate::runtime::event::add($obj, $event, |e| {
             let obj = unsafe { lv_event_get_target(e) };
             let val = unsafe { lv_bar_get_value(obj) } as u8; // Refer to `lv_slider_get_value`
             let val = $ConvertBack(val);
@@ -26,6 +26,9 @@ macro_rules! BindingSliderValue {
             unsafe { lv_bar_set_value(obj, val.into(), LV_ANIM_OFF) }; // Refer to `lv_slider_set_value`
         })
     }};
+    ($obj:expr, $signal:ident, Convert $Convert:expr, ConvertBack $ConvertBack:expr) => {
+        BindingSliderValue!($obj, $signal, LV_EVENT_VALUE_CHANGED, Convert |v| v, ConvertBack $ConvertBack)
+    };
     ($obj:expr, $signal:ident, ConvertBack $ConvertBack:expr) => {
         BindingSliderValue!($obj, $signal, Convert |v| v, ConvertBack $ConvertBack)
     };
