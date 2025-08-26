@@ -1,4 +1,22 @@
 #[macro_export]
+macro_rules! clone {
+    ( $( $var:ident ),* ) => {
+        $(
+            let $var = $var.clone();
+        )*
+    };
+}
+
+#[macro_export]
+macro_rules! downgrade {
+    ( $( $var:ident ),* ) => {
+        $(
+            let $var = std::rc::Rc::downgrade(&$var);
+        )*
+    };
+}
+
+#[macro_export]
 macro_rules! BindingText {
     ($obj:expr, $body:block) => {
         reactive_cache::effect!(|| {
@@ -11,31 +29,31 @@ macro_rules! BindingText {
 
 #[macro_export]
 macro_rules! BindingSliderValue {
-    ($obj:expr, $signal:ident, $event:ident, Convert $Convert:expr, ConvertBack $ConvertBack:expr) => {{
+    ($obj:expr, $signal:expr, $event:ident, Convert $Convert:expr, ConvertBack $ConvertBack:expr) => {{
         $crate::runtime::event::add($obj, $event, |e| {
             let obj = unsafe { lv_event_get_target(e) };
             let val = unsafe { lv_bar_get_value(obj) } as u8; // Refer to `lv_slider_get_value`
             let val = $ConvertBack(val);
-            ${concat($signal, _set)}(val);
+            $signal.set(val);
         });
 
         reactive_cache::effect!(|| {
             let obj = $obj;
-            let val = *${concat($signal, _get)}();
+            let val = *$signal.get();
             let val = $Convert(val);
             unsafe { lv_bar_set_value(obj, val.into(), LV_ANIM_OFF) }; // Refer to `lv_slider_set_value`
         })
     }};
-    ($obj:expr, $signal:ident, Convert $Convert:expr, ConvertBack $ConvertBack:expr) => {
+    ($obj:expr, $signal:expr, Convert $Convert:expr, ConvertBack $ConvertBack:expr) => {
         BindingSliderValue!($obj, $signal, LV_EVENT_VALUE_CHANGED, Convert |v| v, ConvertBack $ConvertBack)
     };
-    ($obj:expr, $signal:ident, ConvertBack $ConvertBack:expr) => {
+    ($obj:expr, $signal:expr, ConvertBack $ConvertBack:expr) => {
         BindingSliderValue!($obj, $signal, Convert |v| v, ConvertBack $ConvertBack)
     };
-    ($obj:expr, $signal:ident, Convert $Convert:expr) => {
+    ($obj:expr, $signal:expr, Convert $Convert:expr) => {
         BindingSliderValue!($obj, $signal, Convert $Convert, ConvertBack |v| v)
     };
-    ($obj:expr, $signal:ident) => {{
+    ($obj:expr, $signal:expr) => {{
         BindingSliderValue!($obj, $signal, Convert |v| v, ConvertBack |v| v)
     }};
 }

@@ -29,8 +29,6 @@ void intense_inc_event(lv_event_t *e);
 void intense_dec_or_clear_event(lv_event_t *e);
 void list_item_changed_event(lv_event_t *e);
 
-void frp_demo_rs_init(void);
-
 lv_color_t lv_color_make_rs(uint8_t r, uint8_t g, uint8_t b)
 {
     return lv_color_make(r, g, b);
@@ -92,12 +90,12 @@ static lv_obj_t *radiobutton_create(lv_obj_t *parent, const char *txt)
 
 static lv_obj_t *create_slider(lv_obj_t *parent, lv_color_t color)
 {
-    lv_obj_t *slider = lv_slider_create(parent);
-    lv_slider_set_range(slider, 0, 255);
-    lv_obj_set_size(slider, 10, LV_PCT(60));
-    lv_obj_set_style_bg_color(slider, color, LV_PART_KNOB);
-    lv_obj_set_style_bg_color(slider, lv_color_darken(color, LV_OPA_40), LV_PART_INDICATOR);
-    return slider;
+    lv_obj_t *obj = lv_slider_create(parent);
+    lv_slider_set_range(obj, 0, 255);
+    lv_obj_set_size(obj, 10, LV_PCT(60));
+    lv_obj_set_style_bg_color(obj, color, LV_PART_KNOB);
+    lv_obj_set_style_bg_color(obj, lv_color_darken(color, LV_OPA_40), LV_PART_INDICATOR);
+    return obj;
 }
 
 static lv_obj_t *page_create(lv_obj_t *parent, int width, int height)
@@ -201,8 +199,6 @@ static lv_obj_t *page_create(lv_obj_t *parent, int width, int height)
     lv_snprintf(buf, sizeof(buf), "None");
     no_color_btn = radiobutton_create(radio_cont, buf);
 
-    lv_obj_add_state(lv_obj_get_child(radio_cont, active_index_get()), LV_STATE_CHECKED);
-
     obj = lv_obj_create(tier2);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
@@ -245,12 +241,52 @@ static lv_obj_t *page_create(lv_obj_t *parent, int width, int height)
     return cont;
 }
 
-// static void page_delete(void) {
-//     lv_obj_del(page);
-// }
+static void page_delete(void)
+{
+    lv_obj_del(page);
+}
+
+static void frp_demo_launcher(lv_event_t *e)
+{
+    static bool running = false;
+
+    lv_obj_t *lbl = lv_event_get_user_data(e);
+
+    if (running)
+    {
+        void frp_demo_rs_drop(void);
+        frp_demo_rs_drop();
+
+        page_delete();
+        page = NULL;
+
+        lv_label_set_text(lbl, "Start FRP demo");
+        running = false;
+    }
+    else
+    {
+        page = page_create(lv_screen_active(), 500, 360);
+
+        void frp_demo_rs_init(void);
+        frp_demo_rs_init();
+
+        lv_obj_add_state(lv_obj_get_child(radio_cont, active_index_get()), LV_STATE_CHECKED);
+
+        lv_label_set_text(lbl, "Stop FRP demo");
+        running = true;
+    }
+}
+
+static void create_launcher(void)
+{
+    lv_obj_t *btn = lv_button_create(lv_screen_active());
+    lv_obj_set_align(btn, LV_ALIGN_TOP_MID);
+    lv_obj_t *lbl = lv_label_create(btn);
+    lv_label_set_text(lbl, "Start FRP demo");
+    lv_obj_add_event_cb(btn, frp_demo_launcher, LV_EVENT_SHORT_CLICKED, lbl);
+}
 
 void frp_demo_main(void)
 {
-    page = page_create(lv_screen_active(), 500, 360);
-    frp_demo_rs_init();
+    create_launcher();
 }
