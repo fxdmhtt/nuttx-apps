@@ -1,7 +1,6 @@
 use crate::{
     binding::lvgl::{lv_event_get_code, lv_event_get_target},
-    event_decl,
-    runtime::delay::delay,
+    delay, event_decl,
 };
 
 event_decl!(button_short_clicked_event_demo, e, async {
@@ -9,7 +8,7 @@ event_decl!(button_short_clicked_event_demo, e, async {
     let target = unsafe { lv_event_get_target(e) };
 
     println!("The async event {code:?} on {target:?} is invoking...");
-    delay(1).await;
+    let _ = delay!(1).await;
     println!("The async event {code:?} on {target:?} has been invoked!");
 });
 

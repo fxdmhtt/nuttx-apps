@@ -1,14 +1,14 @@
-use crate::runtime::{delay::delay, executor};
+use crate::{delay, runtime::executor};
 
 async fn task_template(id: u64) {
     println!("[Coroutine {id}] Task A Start");
-    delay(1).await;
+    let _ = delay!(1).await;
     println!("[Coroutine {id}] Task A Stop");
 
-    delay(1).await;
+    let _ = delay!(1).await;
 
     println!("[Coroutine {id}] Task B Start");
-    delay(1).await;
+    let _ = delay!(1).await;
     println!("[Coroutine {id}] Task B Stop");
 }
 

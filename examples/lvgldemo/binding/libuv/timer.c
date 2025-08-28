@@ -1,7 +1,6 @@
 #include <nuttx/config.h>
 #include <stdlib.h>
 #include <assert.h>
-#include <syslog.h>
 
 #ifdef CONFIG_LV_USE_NUTTX_LIBUV
 #include "uv.h"
@@ -31,11 +30,7 @@ static void rust_wake_and_poll(uv_timer_t *handle)
 uv_timer_t *uv_timer_new(uv_loop_t *loop)
 {
     uv_timer_t *handle = (uv_timer_t *)malloc(sizeof(uv_timer_t));
-    if (handle == NULL)
-    {
-        syslog(LOG_ERR, "[%s] Failed to malloc uv_timer_t.\n", __func__);
-        return NULL;
-    }
+    assert(handle != NULL);
 
     uv_timer_init(loop, handle);
     return handle;
@@ -58,3 +53,10 @@ void uv_timer_pending(uv_timer_t *handle, uint64_t timeout, void *state)
     uv_timer_start(handle, rust_wake_and_poll, timeout, 0);
 }
 #endif
+
+void uv_timer_cancel(uv_timer_t *handle)
+{
+    assert(handle != NULL);
+
+    uv_timer_stop(handle);
+}

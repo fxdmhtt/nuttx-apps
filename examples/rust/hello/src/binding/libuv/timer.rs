@@ -24,10 +24,15 @@ impl UvTimer {
         assert!(!state.is_null());
         unsafe { uv_timer_pending(self.0, timeout, state) }
     }
+
+    pub fn cancel(&self) {
+        unsafe { uv_timer_cancel(self.0) }
+    }
 }
 
 extern "C" {
     fn uv_timer_new(ui_loop: *mut uv_loop_t) -> *mut uv_timer_t;
     fn uv_timer_drop(handle: *mut uv_timer_t);
     fn uv_timer_pending(handle: *mut uv_timer_t, timeout: u64, state: *mut c_void);
+    fn uv_timer_cancel(handle: *mut uv_timer_t);
 }

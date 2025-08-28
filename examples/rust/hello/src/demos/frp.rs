@@ -5,6 +5,7 @@ use std::ffi::{c_char, CStr};
 use std::rc::Rc;
 use std::time::Duration;
 
+use async_cancellation_token::{CancellationTokenSource, Cancelled};
 use async_executor::Task;
 use futures::future::LocalBoxFuture;
 use futures::stream::FuturesUnordered;
@@ -12,12 +13,15 @@ use futures::{pin_mut, select, stream, FutureExt, StreamExt, TryStreamExt};
 use itertools_num::linspace;
 use reactive_cache::{effect, Effect, Memo, Signal};
 use stack_cstr::cstr;
+use thiserror::Error;
 
 use crate::binding::lvgl::*;
-use crate::runtime::cancelled::CancellationTokenSource;
-use crate::runtime::delay::{delay, Delay};
 use crate::runtime::{event, executor, TaskRun};
 use crate::*;
+
+extern "C" {
+    fn rust_executor_wake();
+}
 
 extern "C" {
     static mut radio_cont: *mut lv_obj_t;
@@ -44,7 +48,23 @@ enum Color {
 
 type State = Option<Color>;
 
+#[derive(Error, Copy, Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd, Hash)]
+#[error("not running")]
+struct NotRunning;
+
+#[derive(Error, Debug)]
+enum AppError {
+    #[error(transparent)]
+    NotRunning(#[from] NotRunning),
+    #[error(transparent)]
+    CancelError(#[from] Cancelled),
+}
+
 struct ViewModel {
+    effects: RefCell<Vec<Rc<Effect>>>,
+    tasks: RefCell<FuturesUnordered<LocalBoxFuture<'static, ()>>>,
+    _bg_task: Task<()>,
+
     active_index: RefCell<Rc<Signal<i32>>>,
     intense: RefCell<Rc<Signal<lv_opa_t>>>,
     recolor_animation: RefCell<Rc<Signal<bool>>>,
@@ -52,12 +72,8 @@ struct ViewModel {
 
     state: Rc<Memo<State>>,
 
-    tasks: RefCell<FuturesUnordered<LocalBoxFuture<'static, ()>>>,
-
     cts_fade: RefCell<CancellationTokenSource>,
     cts_anim: RefCell<CancellationTokenSource>,
-
-    effects: RefCell<Vec<Rc<Effect>>>,
 
     hint: RefCell<Option<*mut lv_obj_t>>,
 }
@@ -97,6 +113,10 @@ impl ViewModel {
         let effects = vec![];
 
         Self {
+            effects: effects.into(),
+            tasks: FuturesUnordered::new().into(),
+            _bg_task: tasks_cleanup_in_background(),
+
             active_index: active_index.into(),
             intense: intense.into(),
             recolor_animation: recolor_animation.into(),
@@ -104,57 +124,54 @@ impl ViewModel {
 
             state,
 
-            tasks: FuturesUnordered::new().into(),
-
             cts_fade: CancellationTokenSource::new().into(),
             cts_anim: CancellationTokenSource::new().into(),
-
-            effects: effects.into(),
 
             hint: None.into(),
         }
     }
 }
 
-static mut VM: Option<ViewModel> = None;
+static mut VM: Option<Box<ViewModel>> = None;
 
-fn vm() -> &'static ViewModel {
-    if unsafe { VM.is_none() } {
-        println!();
-    }
-    unsafe { VM.as_ref().unwrap() }
+fn vm() -> Result<&'static ViewModel, NotRunning> {
+    (unsafe { VM.as_deref() }).ok_or(NotRunning)
 }
 
 #[no_mangle]
 extern "C" fn active_index_get() -> i32 {
-    *vm().active_index.borrow().get()
+    *vm().unwrap().active_index.borrow().get()
 }
 
 #[no_mangle]
 extern "C" fn active_index_set(value: i32) -> bool {
-    vm().active_index.borrow().set(value)
+    vm().unwrap().active_index.borrow().set(value)
 }
 
 event_decl!(switch_color_event, {
-    let id = *vm().active_index.borrow().get() + 1;
-    let id = if *vm().recolor_animation.borrow().get() && id == 4 {
+    let id = *vm().unwrap().active_index.borrow().get() + 1;
+    let id = if *vm().unwrap().recolor_animation.borrow().get() && id == 4 {
         id + 1
     } else {
         id
     };
-    vm().active_index.borrow().set(id % 5);
+    vm().unwrap().active_index.borrow().set(id % 5);
 });
 
 fn tasks_cleanup_in_background() -> Task<()> {
     TaskRun(async move {
         let mut id = 0;
-        while let Some(vm) = unsafe { VM.as_ref() } {
-            let mut tasks = vm.tasks.replace(FuturesUnordered::new());
-            while tasks.next().await.is_some() {
-                println!("A mission completed! id: {id}");
-                id += 1;
+        loop {
+            if let Ok(vm) = vm() {
+                let mut tasks = vm.tasks.replace(FuturesUnordered::new());
+
+                while tasks.next().await.is_some() {
+                    println!("A mission completed! id: {id}");
+                    id += 1;
+                }
             }
-            delay(1).await;
+
+            let _ = delay!(Duration::from_millis(100)).await;
         }
     })
 }
@@ -163,30 +180,33 @@ fn cts_cancel_and_renew(cts: &RefCell<CancellationTokenSource>) {
     let old = cts.replace(CancellationTokenSource::new());
     assert!(!old.is_cancelled());
     old.cancel();
+    unsafe { rust_executor_wake() }; // necessary!
 }
 
-async fn list_item_fade(obj: *mut lv_obj_t, cnt: usize) {
-    let token = vm().cts_fade.borrow().token();
+async fn list_item_fade(obj: *mut lv_obj_t, cnt: usize) -> Result<(), AppError> {
+    let token = vm()?.cts_fade.borrow().token();
 
-    let _ = stream::iter(linspace(255.0, 0.0, cnt).map(|x: f32| x.round() as u8))
+    stream::iter(linspace(255.0, 0.0, cnt).map(|x: f32| x.round() as u8))
         .map(Ok)
         .try_for_each(|x| {
             let token = token.clone();
             async move {
+                vm()?;
                 unsafe { lv_obj_set_style_opa(obj, x, LV_PART_MAIN) };
-                Delay::new(Duration::from_millis(100)).await;
-                token.check_cancelled()
+                delay!(Duration::from_millis(100), token)
+                    .await
+                    .map_err(Into::into)
             }
         })
-        .await;
+        .await
 }
 
-async fn intense_animation(target: u8, duration: Duration) {
-    let token = vm().cts_anim.borrow().token();
+async fn intense_animation(target: u8, duration: Duration) -> Result<(), NotRunning> {
+    let token = vm()?.cts_anim.borrow().token();
 
     let delay_anim = Duration::from_millis(100);
     let ticks = duration.div_duration_f32(delay_anim) as i16;
-    let start = *vm().intense.borrow().get();
+    let start = *vm()?.intense.borrow().get();
 
     let header = if target > start {
         "Increase color density"
@@ -196,9 +216,8 @@ async fn intense_animation(target: u8, duration: Duration) {
     let text = cstr!("{header} - {start}");
     let lbl = unsafe { create_list_item(list, text.as_ptr()) };
 
-    vm().recolor_animation.borrow().set(true);
-
-    let _ = stream::iter(
+    vm()?.recolor_animation.borrow().set(true);
+    stream::iter(
         linspace(start as f32, target as f32, ticks as usize).map(|x: f32| x.round() as u8),
     )
     .map(Ok)
@@ -206,86 +225,87 @@ async fn intense_animation(target: u8, duration: Duration) {
         let token = token.clone();
 
         async move {
-            vm().intense.borrow().set(cur);
+            vm()?.intense.borrow().set(cur);
 
             let text = cstr!("{header} - {cur}");
             unsafe { lv_checkbox_set_text(lbl, text.as_ptr()) };
 
-            Delay::new(delay_anim).await;
-            token.check_cancelled()
+            delay!(delay_anim, token).await?;
+
+            Ok::<_, AppError>(())
         }
     })
-    .await;
-    if token.is_cancelled() {
-        if unsafe { VM.is_none() } {
-            return;
+    .await
+    .inspect(|_| {
+        if let Ok(vm) = vm() {
+            vm.intense.borrow().set(target);
         }
-        let cur = *vm().intense.borrow().get();
-        let text = cstr!("{header} - {cur}");
-        unsafe { lv_checkbox_set_text(lbl, text.as_ptr()) };
-    } else {
-        vm().intense.borrow().set(target);
-    }
+    })
+    .or_else(|e| match e {
+        AppError::NotRunning(_) => Err(NotRunning),
+        AppError::CancelError(_) => Ok(()),
+    })?;
+    vm()?.recolor_animation.borrow().set(false);
 
-    vm().recolor_animation.borrow().set(false);
+    let _ = delay!(1, token.clone()).await;
+    let _ = list_item_fade(lbl, 15).await;
 
-    delay(1).await;
-    if unsafe { VM.is_none() } {
-        return;
-    }
-    list_item_fade(lbl, 15).await;
-    if unsafe { VM.is_none() } {
-        return;
-    }
+    vm()?;
     unsafe { lv_obj_delete(lbl) };
+
+    Ok(())
 }
 
 event_decl!(intense_inc_event, async {
-    if *vm().intense.borrow().get() < 0xff {
-        intense_animation(0xff, Duration::from_secs(5)).await;
+    if *vm()?.intense.borrow().get() < 0xff {
+        return intense_animation(0xff, Duration::from_secs(5)).await;
     }
+    Ok(())
 });
 
 event_decl!(intense_dec_or_clear_event, async {
-    match vm().state.get() {
+    match vm()?.state.get() {
         Some(_) => {
-            if *vm().intense.borrow().get() > 0 {
-                intense_animation(0, Duration::from_secs(5)).await;
+            if *vm()?.intense.borrow().get() > 0 {
+                return intense_animation(0, Duration::from_secs(5)).await;
             }
         }
         None => {
-            cts_cancel_and_renew(&vm().cts_fade);
+            cts_cancel_and_renew(&vm()?.cts_fade);
         }
     };
+    Ok(())
 });
 
 event_decl!(list_item_changed_event, e, {
     let obj = unsafe { lv_event_get_target(e) };
     let cnt = unsafe { lv_obj_get_child_count(obj) };
-    vm().list_item_count.borrow().set(cnt);
+    vm().unwrap().list_item_count.borrow().set(cnt);
 });
 
 #[no_mangle]
 extern "C" fn frp_demo_rs_drop() {
-    cts_cancel_and_renew(&vm().cts_fade);
-    cts_cancel_and_renew(&vm().cts_anim);
-
-    vm().tasks.borrow_mut().clear();
+    vm().unwrap().cts_fade.borrow_mut().cancel();
+    vm().unwrap().cts_anim.borrow_mut().cancel();
     executor().try_tick_all();
 
-    let weak_active_index = Rc::downgrade(&vm().active_index.borrow());
-    let weak_intense = Rc::downgrade(&vm().intense.borrow());
-    let weak_recolor_animation = Rc::downgrade(&vm().recolor_animation.borrow());
-    let weak_list_item_count = Rc::downgrade(&vm().list_item_count.borrow());
-    let weak_state = Rc::downgrade(&vm().state);
+    vm().unwrap().tasks.borrow_mut().clear();
+    executor().try_tick_all();
+
+    let weak_active_index = Rc::downgrade(&vm().unwrap().active_index.borrow());
+    let weak_intense = Rc::downgrade(&vm().unwrap().intense.borrow());
+    let weak_recolor_animation = Rc::downgrade(&vm().unwrap().recolor_animation.borrow());
+    let weak_list_item_count = Rc::downgrade(&vm().unwrap().list_item_count.borrow());
+    let weak_state = Rc::downgrade(&vm().unwrap().state);
     let weak_effects = vm()
+        .unwrap()
         .effects
         .borrow()
         .iter()
         .map(Rc::downgrade)
         .collect::<Vec<_>>();
 
-    assert!(unsafe { &mut VM }.take().is_some());
+    drop(unsafe { &mut VM }.take().unwrap());
 
     assert!(weak_active_index.upgrade().is_none());
     assert!(weak_intense.upgrade().is_none());
@@ -297,11 +317,13 @@ extern "C" fn frp_demo_rs_drop() {
 
 #[no_mangle]
 extern "C" fn frp_demo_rs_init() {
-    assert!(unsafe { &mut VM }.replace(ViewModel::new()).is_none());
+    assert!(unsafe { &mut VM }
+        .replace(ViewModel::new().into())
+        .is_none());
 
-    vm().effects.borrow_mut().extend(vec![
+    vm().unwrap().effects.borrow_mut().extend(vec![
         effect!(|| {
-            let id = *vm().active_index.borrow().get();
+            let id = *vm().unwrap().active_index.borrow().get();
             (0..5)
                 .map(|x| match x {
                     _ if x == id => lv_obj_add_state,
@@ -314,19 +336,23 @@ extern "C" fn frp_demo_rs_init() {
         }),
         BindingSliderValue!(
             unsafe { slider },
-            vm().intense.borrow(),
+            vm().unwrap().intense.borrow(),
             ConvertBack | v | {
-                cts_cancel_and_renew(&vm().cts_anim);
+                cts_cancel_and_renew(&vm().unwrap().cts_anim);
                 v
             }
         ),
         effect!(|| {
             unsafe {
-                lv_obj_update_flag(slider, LV_OBJ_FLAG_HIDDEN, vm().state.get().is_none());
+                lv_obj_update_flag(
+                    slider,
+                    LV_OBJ_FLAG_HIDDEN,
+                    vm().unwrap().state.get().is_none(),
+                );
             };
         }),
         BindingImageRecolor!(unsafe { img }, {
-            match vm().state.get() {
+            match vm().unwrap().state.get() {
                 Some(color) => match color {
                     Color::Red => unsafe { lv_color_make_rs(0xff, 0, 0) },
                     Color::Green => unsafe { lv_color_make_rs(0, 0xff, 0) },
@@ -337,22 +363,26 @@ extern "C" fn frp_demo_rs_init() {
             }
         }),
         BindingImageRecolorOpa!(unsafe { img }, {
-            match (vm().state.get(), *vm().intense.borrow().get()) {
+            match (
+                vm().unwrap().state.get(),
+                *vm().unwrap().intense.borrow().get(),
+            ) {
                 (Some(_), intense) => intense,
                 (None, _) => 0,
             }
         }),
         BindingText!(unsafe { img_label }, {
-            vm().state
+            vm().unwrap()
+                .state
                 .get()
                 .map(|c| cstr!("Color {c:?}"))
                 .unwrap_or(cstr!("Original Color"))
         }),
         effect!(|| {
             match (
-                vm().state.get(),
-                *vm().recolor_animation.borrow().get(),
-                *vm().intense.borrow().get(),
+                vm().unwrap().state.get(),
+                *vm().unwrap().recolor_animation.borrow().get(),
+                *vm().unwrap().intense.borrow().get(),
             ) {
                 (_, true, _) => unsafe { lv_obj_add_state(btn1, LV_STATE_DISABLED) },
                 (None, _, _) => unsafe { lv_obj_add_state(btn1, LV_STATE_DISABLED) },
@@ -362,12 +392,12 @@ extern "C" fn frp_demo_rs_init() {
         }),
         effect!(|| {
             match (
-                vm().state.get(),
-                *vm().recolor_animation.borrow().get(),
-                *vm().intense.borrow().get(),
+                vm().unwrap().state.get(),
+                *vm().unwrap().recolor_animation.borrow().get(),
+                *vm().unwrap().intense.borrow().get(),
             ) {
                 (_, true, _) => unsafe { lv_obj_add_state(btn2, LV_STATE_DISABLED) },
-                (None, _, _) if *vm().list_item_count.borrow().get() == 0 => unsafe {
+                (None, _, _) if *vm().unwrap().list_item_count.borrow().get() == 0 => unsafe {
                     lv_obj_add_state(btn2, LV_STATE_DISABLED)
                 },
                 (Some(_), _, 0) => unsafe { lv_obj_add_state(btn2, LV_STATE_DISABLED) },
@@ -375,20 +405,20 @@ extern "C" fn frp_demo_rs_init() {
             };
         }),
         BindingText!(unsafe { lv_obj_get_child(btn2, 0) }, {
-            match vm().state.get() {
+            match vm().unwrap().state.get() {
                 Some(_) => cstr!("Intense Dec"),
                 None => cstr!("Clear Log"),
             }
         }),
         BindingBgColor!(unsafe { btn2 }, {
-            match vm().state.get() {
+            match vm().unwrap().state.get() {
                 Some(_) => unsafe { lv_palette_main(LV_PALETTE_BLUE) },
                 None => unsafe { lv_palette_main(LV_PALETTE_RED) },
             }
         }),
         effect!(|| {
             let btns = unsafe { [no_color_btn] };
-            match *vm().recolor_animation.borrow().get() {
+            match *vm().unwrap().recolor_animation.borrow().get() {
                 true => btns
                     .iter()
                     .for_each(|btn| unsafe { lv_obj_add_state(*btn, LV_STATE_DISABLED) }),
@@ -399,6 +429,7 @@ extern "C" fn frp_demo_rs_init() {
         }),
         effect!(|| {
             let text = vm()
+                .unwrap()
                 .state
                 .get()
                 .map(|c| cstr!("Recolor to {c:?}"))
@@ -430,35 +461,34 @@ extern "C" fn frp_demo_rs_init() {
                 assert!(event::remove(lbl, evt2));
             }
 
-            let token = vm().cts_fade.borrow().token();
+            let token = vm().unwrap().cts_fade.borrow().token();
             let task = TaskRun(async move {
-                let delay = delay(5).fuse();
+                let delay = delay!(5).fuse();
                 let cancelled = token.cancelled().fuse();
                 pin_mut!(delay, cancelled);
 
                 select! {
-                    _ = delay => { list_item_fade(lbl, 10).await; },
+                    _ = delay => { let _ = list_item_fade(lbl, 10).await; },
                     _ = cancelled => {},
                 }
+
                 unsafe { lv_obj_delete(lbl) };
             });
-            vm().tasks.borrow_mut().push(task.boxed_local());
+            vm().unwrap().tasks.borrow_mut().push(task.boxed_local());
         }),
         effect!(|| {
-            match *vm().list_item_count.borrow().get() {
+            match *vm().unwrap().list_item_count.borrow().get() {
                 0 => {
-                    if vm().hint.borrow().is_none() {
-                        unsafe { vm().hint.borrow_mut().replace(create_list_hint()) };
+                    if vm().unwrap().hint.borrow().is_none() {
+                        unsafe { vm().unwrap().hint.borrow_mut().replace(create_list_hint()) };
                     }
                 }
                 _ => {
-                    if let Some(obj) = vm().hint.take() {
+                    if let Some(obj) = vm().unwrap().hint.take() {
                         unsafe { lv_obj_delete(obj) };
                     }
                 }
             };
         }),
     ]);
-
-    tasks_cleanup_in_background().detach();
 }
