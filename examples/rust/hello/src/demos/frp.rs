@@ -247,7 +247,8 @@ async fn intense_animation(target: u8, duration: Duration) -> Result<(), NotRunn
     })?;
     vm()?.recolor_animation.borrow().set(false);
 
-    let _ = delay!(1, token.clone()).await;
+    let token = vm()?.cts_anim.borrow().token();
+    let _ = delay!(1, token).await;
     let _ = list_item_fade(lbl, 15).await;
 
     vm()?;
