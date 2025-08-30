@@ -2,8 +2,20 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#if defined(__GNUC__) || defined(__clang__)
+#define UNREACHABLE() do { __builtin_unreachable(); } while(0)
+#else
+#define UNREACHABLE() assert(0)
+#endif
+
 #ifdef CONFIG_LV_USE_NUTTX_LIBUV
 #include "uv.h"
+
+#define UV_TIMER_SIZE sizeof(uv_timer_t)
+#define UV_TIMER_ALIGN _Alignof(uv_timer_t)
+
+const size_t uv_timer_size = UV_TIMER_SIZE;
+const size_t uv_timer_align = UV_TIMER_ALIGN;
 
 static void rust_wake_and_poll(uv_timer_t *handle)
 {
