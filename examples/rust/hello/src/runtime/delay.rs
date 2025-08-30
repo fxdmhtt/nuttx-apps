@@ -1,37 +1,34 @@
 use std::{
-    cell::RefCell,
     ffi::c_void,
     future::Future,
     pin::Pin,
-    rc::Rc,
     task::{Context, Poll, Waker},
     time::Duration,
 };
 
-use async_cancellation_token::{CancellationToken, Cancelled, CancelledFuture};
+use async_cancellation_token::{
+    CancellationToken, CancellationTokenRegistration, Cancelled, CancelledFuture,
+};
+use pin_project::pin_project;
 
 use crate::{binding::libuv::UvTimer, runtime::UI_LOOP};
 
+#[pin_project]
+#[derive(Default)]
 pub struct Delay {
+    #[pin]
     state: State,
     duration: Duration,
+    extra: Extra,
 }
 
 // Shared state between the future and the `uv_timer_t`
-enum State {
-    StackAllocated(InnerState),
-    Cancellable(Rc<RefCell<InnerState>>, CancelledFuture),
-}
-
 #[derive(Debug, Default)]
-struct InnerState {
-    /// Current status of the delay.
+struct State {
+    // Current status of the delay.
     state: PollState,
 
-    // The waker for the task that `Delay` is running on.
-    // The `uv_timer_t` can use this after setting `completed = true`
-    // to tell `Delay`'s task to wake up, see that `completed = true`,
-    // and move forward.
+    // Task waker, used by `uv_timer_t` callback to wake the future.
     waker: Option<Waker>,
 
     // Wrapper for the `uv_timer_t`
@@ -46,11 +43,19 @@ enum PollState {
     Cancelled,
 }
 
+#[derive(Default)]
+enum Extra {
+    #[default]
+    Plain,
+    Cancellable(CancelledFuture, Option<CancellationTokenRegistration>),
+}
+
 impl Future for Delay {
     type Output = Result<(), Cancelled>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = self.get_mut();
+        let this = self.project();
+        let s = this.state.get_mut();
 
         // 1) Poll the cancellation future (if any) first.
         //
@@ -71,10 +76,9 @@ impl Future for Delay {
         // If ready, mark the state as Cancelled and return `Err(Cancelled)` immediately.
         // Note: dropping the handle early is optional, since Delay will drop it
         // automatically when it goes out of scope.
-        if let State::Cancellable(rc_inner_state, fut) = &mut this.state {
-            let mut s = rc_inner_state.borrow_mut();
+        if let Extra::Cancellable(fut, _reg) = this.extra {
             if let Poll::Ready(()) = Pin::new(fut).poll(cx) {
-                assert!(matches!(s.state, PollState::Pending));
+                assert!(matches!(s.state, PollState::Pending | PollState::Cancelled));
                 s.state = PollState::Cancelled;
                 return Poll::Ready(Err(Cancelled));
             }
@@ -83,21 +87,12 @@ impl Future for Delay {
         // 2) Now do the rest under a single borrow_mut to reduce multiple borrows.
         // Create the uv timer only when the delay is still Pending and no handle exists.
 
-        let state_ptr = &mut this.state as *mut _ as *mut _;
-        let s = match &mut this.state {
-            State::StackAllocated(inner_state) => inner_state,
-            State::Cancellable(rc_inner_state, _) => &mut *rc_inner_state.borrow_mut(),
-        };
-
         // Working with the `uv_timer_t`
-        s.handle.get_or_insert_with(|| {
-            // Ensure the timer is only created once for this Delay
-            assert!(matches!(s.state, PollState::Pending));
-
+        if matches!(s.state, PollState::Pending) && s.handle.is_none() {
             let uv_timer = UvTimer::new(unsafe { UI_LOOP });
-            uv_timer.start(this.duration.as_millis() as u64, state_ptr);
-            uv_timer
-        });
+            uv_timer.start(this.duration.as_millis() as u64, s as *mut _ as *mut _);
+            s.handle.replace(uv_timer);
+        }
 
         // Look at the shared state to see if the timer has already completed.
         match s.state {
@@ -132,62 +127,83 @@ impl Delay {
     // Create a new `Delay` which will complete after the specified duration elapses.
     pub fn new(duration: Duration) -> Self {
         Delay {
-            state: State::StackAllocated(Default::default()),
             duration,
+            ..Default::default()
         }
     }
 
-    // Create a new `Delay` with `CancellationToken` which will complete
-    // either when the specified duration elapses
-    // or when the associated `CancellationToken` is cancelled.
-    pub fn new_with_token(duration: Duration, token: CancellationToken) -> Self {
-        let state =
-            State::Cancellable(Rc::new(RefCell::new(Default::default())), token.cancelled());
+    /// Make this Delay cancellable by the given `CancellationToken`.
+    ///
+    /// Once registered, the Delay will complete either:
+    /// 1. when the timer duration elapses, or
+    /// 2. when the token is cancelled.
+    ///
+    /// Waker notes:
+    /// - Polling the `CancelledFuture` registers the task's waker with the token.
+    /// - When `cancel()` is called, the task will be woken and `poll` will return `Err(Cancelled)`.
+    pub fn set_cancel(self: Pin<&mut Self>, token: CancellationToken) {
+        let this = self.project();
+        let s = this.state.get_mut();
+
+        assert!(
+            matches!(this.extra, Extra::Plain),
+            "Delay can only be cancellable once"
+        );
 
         // Register a cancellation callback with the token.
-        //
-        // We capture a `Weak<State>` so dropping the Delay makes the callback a no-op.
-        // On cancellation, if the State is still alive we stop the native timer handle
-        // to avoid further timer callbacks and free native resources early.
         //
         // Note: the wakeup is performed by `CancellationTokenSource::cancel()` which first
         // runs registered callbacks (like this stop closure) and then wakes token.wakers.
         // The CancelledFuture registers this task's waker with the token, so when
         // cancel() calls wake() the task will be resumed and can observe the Cancelled state.
-        match &state {
-            State::StackAllocated(_) => unreachable!(),
-            State::Cancellable(state, _) => {
-                let weak_state = Rc::downgrade(state);
-                token.register(move || {
-                    if let Some(state) = weak_state.upgrade() {
-                        if let Some(handle) = state.borrow().handle.as_ref() {
-                            handle.cancel();
-                        }
-                    }
-                });
-            }
-        }
-
-        Delay { state, duration }
+        *this.extra = Extra::Cancellable(
+            token.cancelled(),
+            if token.is_cancelled() {
+                token.register(|| {})
+            } else {
+                // Unsafe usage warning:
+                //
+                // The following unsafe block dereferences a raw pointer to `s.handle`.
+                //
+                // Safety analysis:
+                // - `handle` is a pointer to `Option<UvTimer>` inside `Delay.state`.
+                // - `Extra::Cancellable` holds the `CancellationTokenRegistration`.
+                // - `CancellationTokenRegistration`'s Drop implementation unregisters the closure from the token.
+                //   This ensures that when `Delay` is dropped, the closure is removed and will never be called
+                //   after `Delay` no longer exists.
+                // - Therefore, this unsafe is safe *as long as*:
+                //     1. The `Delay` is pinned and alive for the entire time the `CancellationToken` can call the callback.
+                //     2. No other code moves or invalidates `s.handle` while the registration exists.
+                // - Risk points:
+                //     - If the `CancellationToken` outlives the `Delay` and the registration somehow fires after
+                //       `Delay` is dropped, this would be undefined behavior.
+                //     - In single-threaded, short-lived Delay usage with registration dropped in Extra::Cancellable's Drop,
+                //       this pattern is sound.
+                // - Always document this assumption clearly.
+                let handle: *const Option<UvTimer> = &s.handle;
+                token.register(move || match unsafe { &*handle } {
+                    Some(handle) => handle.cancel(),
+                    None => unreachable!(),
+                })
+            },
+        );
     }
 }
 
 #[no_mangle]
 extern "C" fn rust_delay_wake(state: *mut c_void) {
     assert!(!state.is_null());
-    let state = unsafe { &mut *(state as *mut State) };
+    let s = unsafe { &mut *(state as *mut State) };
 
-    let inner_state = match state {
-        State::StackAllocated(inner_state) => inner_state,
-        State::Cancellable(rc_inner_state, _) => &mut *rc_inner_state.borrow_mut(),
-    };
-
-    assert!(matches!(inner_state.state, PollState::Pending));
+    // Safety:
+    // - `state` must point to a valid State inside a pinned Delay.
+    // - This is guaranteed by Delay being alive and pinned for the lifetime of uv_timer.
+    assert!(matches!(s.state, PollState::Pending));
 
     // Signal that the timer has completed and wake up the last
     // task on which the future was polled, if one exists.
-    inner_state.state = PollState::Completed;
-    if let Some(waker) = inner_state.waker.take() {
+    s.state = PollState::Completed;
+    if let Some(waker) = s.waker.take() {
         waker.wake()
     }
 }
@@ -198,12 +214,22 @@ macro_rules! delay {
         $crate::runtime::delay::Delay::new(std::time::Duration::from_secs($secs))
     };
     ($secs:literal, $token:expr) => {
-        $crate::runtime::delay::Delay::new_with_token(std::time::Duration::from_secs($secs), $token)
+        async {
+            let d = delay!(std::time::Duration::from_secs($secs));
+            futures::pin_mut!(d);
+            d.as_mut().set_cancel($token);
+            d.await
+        }
     };
     ($duration:expr) => {
         $crate::runtime::delay::Delay::new($duration)
     };
     ($duration:expr, $token:expr) => {
-        $crate::runtime::delay::Delay::new_with_token($duration, $token)
+        async {
+            let d = delay!($duration);
+            futures::pin_mut!(d);
+            d.as_mut().set_cancel($token);
+            d.await
+        }
     };
 }

@@ -14,7 +14,7 @@ impl Closure {
         let boxed = Box::new(event_cb);
 
         let ptr = &*boxed as *const dyn Fn(*mut lv_event_t);
-        println!("New Closure at {ptr:p}");
+        println!("New event Closure at {ptr:p}");
 
         Self(boxed)
     }
@@ -23,7 +23,7 @@ impl Closure {
 impl Drop for Closure {
     fn drop(&mut self) {
         let ptr = &*self.0 as *const dyn Fn(*mut lv_event_t);
-        println!("Dropping Closure at {ptr:p}");
+        println!("Dropping event Closure at {ptr:p}");
     }
 }
 

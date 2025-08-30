@@ -171,7 +171,7 @@ fn tasks_cleanup_in_background() -> Task<()> {
                 }
             }
 
-            let _ = delay!(Duration::from_millis(100)).await;
+            let _ = delay!(Duration::from_millis(1000)).await;
         }
     })
 }
