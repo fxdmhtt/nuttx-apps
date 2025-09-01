@@ -318,6 +318,19 @@ extern "C" fn frp_demo_rs_drop() {
 
 #[no_mangle]
 extern "C" fn frp_demo_rs_init() {
+    // assert_eq!(
+    //     diag::heap::allocator_stats(),
+    //     diag::heap::allocator_details()
+    //         .iter()
+    //         .map(|x| x.size)
+    //         .sum::<usize>(),
+    // );
+    // diag::heap::allocator_details()
+    //     .iter()
+    //     .for_each(|x| println!("{x:#?}"));
+    // diag::heap::allocator_zero();
+    // println!("init: {}", diag::heap::allocator_stats());
+
     assert!(unsafe { &mut VM }
         .replace(ViewModel::new().into())
         .is_none());

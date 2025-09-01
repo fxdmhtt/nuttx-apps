@@ -2,6 +2,7 @@
 
 mod binding;
 mod demos;
+// mod diag;
 mod runtime;
 
 // Function hello_rust_cargo without manglng
