@@ -243,6 +243,9 @@ static lv_obj_t *page_create(lv_obj_t *parent, int width, int height)
 
 static void page_delete(void)
 {
+    lv_style_reset(&style_radio);
+    lv_style_reset(&style_radio_chk);
+
     lv_obj_del(page);
 }
 
