@@ -29,6 +29,9 @@ MODULE = $(CONFIG_EXAMPLES_LVGLDEMO)
 
 # LVGL demo Example
 
-MAINSRC = lvgldemo.c $(wildcard binding/libuv/*.c) $(wildcard demos/*.c) $(wildcard diag/*.c)
+MAINSRC = lvgldemo.c
+MAINSRC += $(shell find ${shell pwd}/binding -type f -name '*.c')
+MAINSRC += $(shell find ${shell pwd}/demos -type f -name '*.c')
+MAINSRC += $(shell find ${shell pwd}/diag -type f -name '*.c')
 
 include $(APPDIR)/Application.mk
