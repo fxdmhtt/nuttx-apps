@@ -60,7 +60,7 @@ enum AppError {
 }
 
 struct ViewModel {
-    tasks: TaskManager,
+    tasks: Rc<TaskManager>,
     _bg_task: Task<()>,
 
     active_index: Rc<Signal<i32>>,
@@ -80,7 +80,7 @@ struct ViewModel {
 
 impl ViewModel {
     fn new() -> Self {
-        let tasks = TaskManager::new();
+        let tasks = TaskManager::new().into();
         let _bg_task = TaskRun(async move {
             loop {
                 if let Ok(vm) = vm() {
@@ -282,8 +282,14 @@ extern "C" fn frp_demo_rs_drop() {
     vm().unwrap().cts_anim.borrow_mut().cancel();
     executor().try_tick_all(); // necessary!
 
+    let allocated = diag::heap::allocator_stats();
     vm().unwrap().tasks.cancel_all(); // unnecessary
+    println!(
+        "{} bytes deallocated for all tasks!",
+        allocated - diag::heap::allocator_stats()
+    );
 
+    let weak_tasks = Rc::downgrade(&vm().unwrap().tasks);
     let weak_active_index = Rc::downgrade(&vm().unwrap().active_index);
     let weak_intense = Rc::downgrade(&vm().unwrap().intense);
     let weak_recolor_animation = Rc::downgrade(&vm().unwrap().recolor_animation);
@@ -299,6 +305,7 @@ extern "C" fn frp_demo_rs_drop() {
 
     drop(unsafe { &mut VM }.take().unwrap());
 
+    assert!(weak_tasks.upgrade().is_none());
     assert!(weak_active_index.upgrade().is_none());
     assert!(weak_intense.upgrade().is_none());
     assert!(weak_recolor_animation.upgrade().is_none());
@@ -461,6 +468,7 @@ extern "C" fn frp_demo_rs_init() {
             }
 
             let token = vm().unwrap().cts_fade.borrow().token();
+            let allocated = diag::heap::allocator_stats();
             let task = TaskRun(async move {
                 let delay = delay!(5).fuse();
                 let cancelled = token.cancelled().fuse();
@@ -475,6 +483,10 @@ extern "C" fn frp_demo_rs_init() {
             });
             vm().unwrap().tasks.gc(); // unnecessary
             println!("{} tasks remaining!", vm().unwrap().tasks.attach(task));
+            println!(
+                "{} bytes allocated for the task!",
+                diag::heap::allocator_stats() - allocated
+            );
         }),
         effect!(|| {
             match *vm().unwrap().list_item_count.get() {
