@@ -1,13 +1,13 @@
+pub mod r#async;
 pub mod delay;
 pub mod event;
-pub mod executor;
 pub mod mvvm;
 
 use std::{ffi::c_void, future::Future, ptr::null_mut};
 
 use async_executor::Task;
 
-use crate::runtime::executor::PriorityExecutor;
+use crate::runtime::r#async::executor::PriorityExecutor;
 
 static mut EXECUTOR: PriorityExecutor = PriorityExecutor::new();
 pub static mut UI_LOOP: *mut c_void = null_mut();

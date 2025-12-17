@@ -7,8 +7,6 @@ use std::time::Duration;
 
 use async_cancellation_token::{CancellationTokenSource, Cancelled};
 use async_executor::Task;
-use futures::future::LocalBoxFuture;
-use futures::stream::FuturesUnordered;
 use futures::{pin_mut, select, stream, FutureExt, StreamExt, TryStreamExt};
 use itertools_num::linspace;
 use reactive_cache::{effect, Effect, Memo, Signal};
@@ -16,6 +14,7 @@ use stack_cstr::cstr;
 use thiserror::Error;
 
 use crate::binding::lvgl::*;
+use crate::runtime::r#async::task_manager::TaskManager;
 use crate::runtime::{event, executor, TaskRun};
 use crate::*;
 
@@ -61,16 +60,17 @@ enum AppError {
 }
 
 struct ViewModel {
-    effects: RefCell<Vec<Rc<Effect>>>,
-    tasks: RefCell<FuturesUnordered<LocalBoxFuture<'static, ()>>>,
+    tasks: TaskManager,
     _bg_task: Task<()>,
 
-    active_index: RefCell<Rc<Signal<i32>>>,
-    intense: RefCell<Rc<Signal<lv_opa_t>>>,
-    recolor_animation: RefCell<Rc<Signal<bool>>>,
-    list_item_count: RefCell<Rc<Signal<u32>>>,
+    active_index: Rc<Signal<i32>>,
+    intense: Rc<Signal<lv_opa_t>>,
+    recolor_animation: Rc<Signal<bool>>,
+    list_item_count: Rc<Signal<u32>>,
 
     state: Rc<Memo<State>>,
+
+    effects: RefCell<Vec<Rc<Effect>>>,
 
     cts_fade: RefCell<CancellationTokenSource>,
     cts_anim: RefCell<CancellationTokenSource>,
@@ -80,6 +80,17 @@ struct ViewModel {
 
 impl ViewModel {
     fn new() -> Self {
+        let tasks = TaskManager::new();
+        let _bg_task = TaskRun(async move {
+            loop {
+                if let Ok(vm) = vm() {
+                    println!("{} tasks remaining!", vm.tasks.gc());
+                }
+
+                let _ = delay!(Duration::from_millis(1000)).await;
+            }
+        });
+
         let active_index = Signal::new(4);
         let intense = Signal::new(0x7f);
         let recolor_animation = Signal::new(false);
@@ -113,16 +124,17 @@ impl ViewModel {
         let effects = vec![];
 
         Self {
-            effects: effects.into(),
-            tasks: FuturesUnordered::new().into(),
-            _bg_task: tasks_cleanup_in_background(),
+            tasks,
+            _bg_task,
 
-            active_index: active_index.into(),
-            intense: intense.into(),
-            recolor_animation: recolor_animation.into(),
-            list_item_count: list_item_count.into(),
+            active_index,
+            intense,
+            recolor_animation,
+            list_item_count,
 
             state,
+
+            effects: effects.into(),
 
             cts_fade: CancellationTokenSource::new().into(),
             cts_anim: CancellationTokenSource::new().into(),
@@ -140,41 +152,23 @@ fn vm() -> Result<&'static ViewModel, NotRunning> {
 
 #[no_mangle]
 extern "C" fn active_index_get() -> i32 {
-    *vm().unwrap().active_index.borrow().get()
+    *vm().unwrap().active_index.get()
 }
 
 #[no_mangle]
 extern "C" fn active_index_set(value: i32) -> bool {
-    vm().unwrap().active_index.borrow().set(value)
+    vm().unwrap().active_index.set(value)
 }
 
 event_decl!(switch_color_event, {
-    let id = *vm().unwrap().active_index.borrow().get() + 1;
-    let id = if *vm().unwrap().recolor_animation.borrow().get() && id == 4 {
+    let id = *vm().unwrap().active_index.get() + 1;
+    let id = if *vm().unwrap().recolor_animation.get() && id == 4 {
         id + 1
     } else {
         id
     };
-    vm().unwrap().active_index.borrow().set(id % 5);
+    vm().unwrap().active_index.set(id % 5);
 });
-
-fn tasks_cleanup_in_background() -> Task<()> {
-    TaskRun(async move {
-        let mut id = 0;
-        loop {
-            if let Ok(vm) = vm() {
-                let mut tasks = vm.tasks.replace(FuturesUnordered::new());
-
-                while tasks.next().await.is_some() {
-                    println!("A mission completed! id: {id}");
-                    id += 1;
-                }
-            }
-
-            let _ = delay!(Duration::from_millis(1000)).await;
-        }
-    })
-}
 
 fn cts_cancel_and_renew(cts: &RefCell<CancellationTokenSource>) {
     let old = cts.replace(CancellationTokenSource::new());
@@ -206,7 +200,7 @@ async fn intense_animation(target: u8, duration: Duration) -> Result<(), NotRunn
 
     let delay_anim = Duration::from_millis(100);
     let ticks = duration.div_duration_f32(delay_anim) as i16;
-    let start = *vm()?.intense.borrow().get();
+    let start = *vm()?.intense.get();
 
     let header = if target > start {
         "Increase color density"
@@ -216,36 +210,34 @@ async fn intense_animation(target: u8, duration: Duration) -> Result<(), NotRunn
     let text = cstr!("{header} - {start}");
     let lbl = unsafe { create_list_item(list, text.as_ptr()) };
 
-    vm()?.recolor_animation.borrow().set(true);
-    stream::iter(
-        linspace(start as f32, target as f32, ticks as usize).map(|x: f32| x.round() as u8),
-    )
-    .map(Ok)
-    .try_for_each(|cur| {
-        let token = token.clone();
+    vm()?.recolor_animation.set(true);
+    stream::iter(linspace(start as f32, target as f32, ticks as usize).map(|x: f32| x.round() as u8))
+        .map(Ok)
+        .try_for_each(|cur| {
+            let token = token.clone();
 
-        async move {
-            vm()?.intense.borrow().set(cur);
+            async move {
+                vm()?.intense.set(cur);
 
-            let text = cstr!("{header} - {cur}");
-            unsafe { lv_checkbox_set_text(lbl, text.as_ptr()) };
+                let text = cstr!("{header} - {cur}");
+                unsafe { lv_checkbox_set_text(lbl, text.as_ptr()) };
 
-            delay!(delay_anim, token).await?;
+                delay!(delay_anim, token).await?;
 
-            Ok::<_, AppError>(())
-        }
-    })
-    .await
-    .inspect(|_| {
-        if let Ok(vm) = vm() {
-            vm.intense.borrow().set(target);
-        }
-    })
-    .or_else(|e| match e {
-        AppError::NotRunning(_) => Err(NotRunning),
-        AppError::CancelError(_) => Ok(()),
-    })?;
-    vm()?.recolor_animation.borrow().set(false);
+                Ok::<_, AppError>(())
+            }
+        })
+        .await
+        .inspect(|_| {
+            if let Ok(vm) = vm() {
+                vm.intense.set(target);
+            }
+        })
+        .or_else(|e| match e {
+            AppError::NotRunning(_) => Err(NotRunning),
+            AppError::CancelError(_) => Ok(()),
+        })?;
+    vm()?.recolor_animation.set(false);
 
     let token = vm()?.cts_anim.borrow().token();
     let _ = delay!(1, token).await;
@@ -258,7 +250,7 @@ async fn intense_animation(target: u8, duration: Duration) -> Result<(), NotRunn
 }
 
 event_decl!(intense_inc_event, async {
-    if *vm()?.intense.borrow().get() < 0xff {
+    if *vm()?.intense.get() < 0xff {
         return intense_animation(0xff, Duration::from_secs(5)).await;
     }
     Ok(())
@@ -267,7 +259,7 @@ event_decl!(intense_inc_event, async {
 event_decl!(intense_dec_or_clear_event, async {
     match vm()?.state.get() {
         Some(_) => {
-            if *vm()?.intense.borrow().get() > 0 {
+            if *vm()?.intense.get() > 0 {
                 return intense_animation(0, Duration::from_secs(5)).await;
             }
         }
@@ -281,22 +273,21 @@ event_decl!(intense_dec_or_clear_event, async {
 event_decl!(list_item_changed_event, e, {
     let obj = unsafe { lv_event_get_target(e) };
     let cnt = unsafe { lv_obj_get_child_count(obj) };
-    vm().unwrap().list_item_count.borrow().set(cnt);
+    vm().unwrap().list_item_count.set(cnt);
 });
 
 #[no_mangle]
 extern "C" fn frp_demo_rs_drop() {
     vm().unwrap().cts_fade.borrow_mut().cancel();
     vm().unwrap().cts_anim.borrow_mut().cancel();
-    executor().try_tick_all();
+    executor().try_tick_all(); // necessary!
 
-    vm().unwrap().tasks.borrow_mut().clear();
-    executor().try_tick_all();
+    vm().unwrap().tasks.cancel_all(); // unnecessary
 
-    let weak_active_index = Rc::downgrade(&vm().unwrap().active_index.borrow());
-    let weak_intense = Rc::downgrade(&vm().unwrap().intense.borrow());
-    let weak_recolor_animation = Rc::downgrade(&vm().unwrap().recolor_animation.borrow());
-    let weak_list_item_count = Rc::downgrade(&vm().unwrap().list_item_count.borrow());
+    let weak_active_index = Rc::downgrade(&vm().unwrap().active_index);
+    let weak_intense = Rc::downgrade(&vm().unwrap().intense);
+    let weak_recolor_animation = Rc::downgrade(&vm().unwrap().recolor_animation);
+    let weak_list_item_count = Rc::downgrade(&vm().unwrap().list_item_count);
     let weak_state = Rc::downgrade(&vm().unwrap().state);
     let weak_effects = vm()
         .unwrap()
@@ -324,20 +315,18 @@ extern "C" fn frp_demo_rs_init() {
 
     vm().unwrap().effects.borrow_mut().extend(vec![
         effect!(|| {
-            let id = *vm().unwrap().active_index.borrow().get();
+            let id = *vm().unwrap().active_index.get();
             (0..5)
                 .map(|x| match x {
                     _ if x == id => lv_obj_add_state,
                     _ => lv_obj_remove_state,
                 })
                 .zip(0..5)
-                .for_each(|(f, id)| unsafe {
-                    f(lv_obj_get_child(radio_cont, id), LV_STATE_CHECKED)
-                });
+                .for_each(|(f, id)| unsafe { f(lv_obj_get_child(radio_cont, id), LV_STATE_CHECKED) });
         }),
         BindingSliderValue!(
             unsafe { slider },
-            vm().unwrap().intense.borrow(),
+            vm().unwrap().intense,
             ConvertBack | v | {
                 cts_cancel_and_renew(&vm().unwrap().cts_anim);
                 v
@@ -364,10 +353,7 @@ extern "C" fn frp_demo_rs_init() {
             }
         }),
         BindingImageRecolorOpa!(unsafe { img }, {
-            match (
-                vm().unwrap().state.get(),
-                *vm().unwrap().intense.borrow().get(),
-            ) {
+            match (vm().unwrap().state.get(), *vm().unwrap().intense.get()) {
                 (Some(_), intense) => intense,
                 (None, _) => 0,
             }
@@ -382,8 +368,8 @@ extern "C" fn frp_demo_rs_init() {
         effect!(|| {
             match (
                 vm().unwrap().state.get(),
-                *vm().unwrap().recolor_animation.borrow().get(),
-                *vm().unwrap().intense.borrow().get(),
+                *vm().unwrap().recolor_animation.get(),
+                *vm().unwrap().intense.get(),
             ) {
                 (_, true, _) => unsafe { lv_obj_add_state(btn1, LV_STATE_DISABLED) },
                 (None, _, _) => unsafe { lv_obj_add_state(btn1, LV_STATE_DISABLED) },
@@ -394,13 +380,11 @@ extern "C" fn frp_demo_rs_init() {
         effect!(|| {
             match (
                 vm().unwrap().state.get(),
-                *vm().unwrap().recolor_animation.borrow().get(),
-                *vm().unwrap().intense.borrow().get(),
+                *vm().unwrap().recolor_animation.get(),
+                *vm().unwrap().intense.get(),
             ) {
                 (_, true, _) => unsafe { lv_obj_add_state(btn2, LV_STATE_DISABLED) },
-                (None, _, _) if *vm().unwrap().list_item_count.borrow().get() == 0 => unsafe {
-                    lv_obj_add_state(btn2, LV_STATE_DISABLED)
-                },
+                (None, _, _) if *vm().unwrap().list_item_count.get() == 0 => unsafe { lv_obj_add_state(btn2, LV_STATE_DISABLED) },
                 (Some(_), _, 0) => unsafe { lv_obj_add_state(btn2, LV_STATE_DISABLED) },
                 _ => unsafe { lv_obj_remove_state(btn2, LV_STATE_DISABLED) },
             };
@@ -419,7 +403,7 @@ extern "C" fn frp_demo_rs_init() {
         }),
         effect!(|| {
             let btns = unsafe { [no_color_btn] };
-            match *vm().unwrap().recolor_animation.borrow().get() {
+            match *vm().unwrap().recolor_animation.get() {
                 true => btns
                     .iter()
                     .for_each(|btn| unsafe { lv_obj_add_state(*btn, LV_STATE_DISABLED) }),
@@ -437,6 +421,7 @@ extern "C" fn frp_demo_rs_init() {
                 .unwrap_or(cstr!("Non Recolor!"));
             let lbl = unsafe { create_list_item(list, text.as_ptr()) };
 
+            // Test for event::add / event::remove
             {
                 let item = lbl;
                 let evt1 = event::add(lbl, LV_EVENT_SHORT_CLICKED, move |e| {
@@ -475,10 +460,11 @@ extern "C" fn frp_demo_rs_init() {
 
                 unsafe { lv_obj_delete(lbl) };
             });
-            vm().unwrap().tasks.borrow_mut().push(task.boxed_local());
+            vm().unwrap().tasks.gc(); // unnecessary
+            println!("{} tasks remaining!", vm().unwrap().tasks.attach(task));
         }),
         effect!(|| {
-            match *vm().unwrap().list_item_count.borrow().get() {
+            match *vm().unwrap().list_item_count.get() {
                 0 => {
                     if vm().unwrap().hint.borrow().is_none() {
                         unsafe { vm().unwrap().hint.borrow_mut().replace(create_list_hint()) };
