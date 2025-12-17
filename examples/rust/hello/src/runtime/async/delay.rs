@@ -6,9 +6,7 @@ use std::{
     time::Duration,
 };
 
-use async_cancellation_token::{
-    CancellationToken, CancellationTokenRegistration, Cancelled, CancelledFuture,
-};
+use async_cancellation_token::{CancellationToken, CancellationTokenRegistration, Cancelled, CancelledFuture};
 use pin_project::pin_project;
 
 use crate::{binding::libuv::UvTimer, runtime::UI_LOOP};
@@ -211,7 +209,7 @@ extern "C" fn rust_delay_wake(state: *mut c_void) {
 #[macro_export]
 macro_rules! delay {
     ($secs:literal) => {
-        $crate::runtime::delay::Delay::new(std::time::Duration::from_secs($secs))
+        $crate::runtime::Delay::new(std::time::Duration::from_secs($secs))
     };
     ($secs:literal, $token:expr) => {
         async {
@@ -222,7 +220,7 @@ macro_rules! delay {
         }
     };
     ($duration:expr) => {
-        $crate::runtime::delay::Delay::new($duration)
+        $crate::runtime::Delay::new($duration)
     };
     ($duration:expr, $token:expr) => {
         async {
