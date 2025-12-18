@@ -87,7 +87,7 @@ impl Future for Delay {
 
         // Working with the `uv_timer_t`
         if matches!(s.state, PollState::Pending) && s.handle.is_none() {
-            let uv_timer = UvTimer::new(unsafe { UI_LOOP });
+            let uv_timer = UvTimer::new((unsafe { UI_LOOP }).unwrap());
             uv_timer.start(this.duration.as_millis() as u64, s as *mut _ as *mut _);
             s.handle.replace(uv_timer);
         }

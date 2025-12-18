@@ -1,17 +1,16 @@
 pub mod r#async;
-pub mod event;
-pub mod mvvm;
+pub mod lvgl;
 
 pub use r#async::*;
 
-use std::{ffi::c_void, future::Future, ptr::null_mut};
+use std::{ffi::c_void, future::Future, ptr::NonNull};
 
 use async_executor::Task;
 
 use crate::runtime::PriorityExecutor;
 
 static mut EXECUTOR: PriorityExecutor = PriorityExecutor::new();
-pub static mut UI_LOOP: *mut c_void = null_mut();
+pub static mut UI_LOOP: Option<NonNull<c_void>> = None;
 
 #[allow(static_mut_refs)]
 pub fn executor() -> &'static mut PriorityExecutor {
@@ -25,8 +24,7 @@ extern "C" fn rust_executor_drive() {
 
 #[no_mangle]
 extern "C" fn rust_register_loop(ui_loop: *mut c_void) {
-    assert!(!ui_loop.is_null());
-    unsafe { UI_LOOP = ui_loop }
+    unsafe { UI_LOOP = Some(NonNull::new(ui_loop).unwrap()) }
 }
 
 #[allow(non_snake_case)]

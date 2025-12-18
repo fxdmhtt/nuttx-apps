@@ -11,15 +11,14 @@ static lv_style_t style_radio;
 static lv_style_t style_radio_chk;
 
 lv_obj_t *page;
-lv_obj_t *radio_cont;
-lv_obj_t *img;
-lv_obj_t *img_label;
-lv_obj_t *switch_btn;
-lv_obj_t *no_color_btn;
-lv_obj_t *btn1;
-lv_obj_t *btn2;
-lv_obj_t *list;
-lv_obj_t *slider;
+lv_obj_t *_radio_cont;
+lv_obj_t *_img;
+lv_obj_t *_img_label;
+lv_obj_t *_no_color_btn;
+lv_obj_t *_btn1;
+lv_obj_t *_btn2;
+lv_obj_t *_list;
+lv_obj_t *_slider;
 
 int32_t active_index_get(void);
 bool active_index_set(int32_t);
@@ -36,7 +35,7 @@ lv_color_t lv_color_make_rs(uint8_t r, uint8_t g, uint8_t b)
 
 lv_obj_t *create_list_item(lv_obj_t *parent, const char *text)
 {
-    lv_obj_t *item = lv_list_add_text(list, text);
+    lv_obj_t *item = lv_list_add_text(_list, text);
     lv_obj_add_flag(item, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_bg_color(item, lv_color_white(), 0);
     return item;
@@ -44,12 +43,12 @@ lv_obj_t *create_list_item(lv_obj_t *parent, const char *text)
 
 lv_obj_t *create_list_hint(void)
 {
-    lv_coord_t w = lv_obj_get_width(list);
-    lv_coord_t h = lv_obj_get_height(list);
-    lv_coord_t x = lv_obj_get_x(list);
-    lv_coord_t y = lv_obj_get_y(list);
+    lv_coord_t w = lv_obj_get_width(_list);
+    lv_coord_t h = lv_obj_get_height(_list);
+    lv_coord_t x = lv_obj_get_x(_list);
+    lv_coord_t y = lv_obj_get_y(_list);
 
-    lv_obj_t *cont = lv_obj_create(lv_obj_get_parent(list));
+    lv_obj_t *cont = lv_obj_create(lv_obj_get_parent(_list));
     lv_obj_set_size(cont, w, h);
     lv_obj_set_pos(cont, x, y);
     lv_obj_t *hint = lv_label_create(cont);
@@ -165,46 +164,46 @@ static lv_obj_t *page_create(lv_obj_t *parent, int width, int height)
     lv_obj_align_to(obj, up, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 0);
 
     LV_IMAGE_DECLARE(img_cogwheel_argb);
-    img = obj = lv_image_create(up);
+    _img = obj = lv_image_create(up);
     lv_obj_center(obj);
-    lv_image_set_src(img, &img_cogwheel_argb);
+    lv_image_set_src(_img, &img_cogwheel_argb);
 
-    img_label = obj = lv_label_create(down);
-    lv_obj_center(obj);
-
-    slider = obj = create_slider(middle, lv_palette_main(LV_PALETTE_GREY));
+    _img_label = obj = lv_label_create(down);
     lv_obj_center(obj);
 
-    list = obj = lv_list_create(right);
+    _slider = obj = create_slider(middle, lv_palette_main(LV_PALETTE_GREY));
+    lv_obj_center(obj);
+
+    _list = obj = lv_list_create(right);
     lv_obj_set_size(obj, lv_pct(100), lv_pct(100));
-    lv_obj_add_event_cb(list, list_item_changed_event, LV_EVENT_CHILD_CHANGED, 0);
+    lv_obj_add_event_cb(_list, list_item_changed_event, LV_EVENT_CHILD_CHANGED, 0);
 
-    radio_cont = obj = lv_obj_create(tier2);
+    _radio_cont = obj = lv_obj_create(tier2);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
     lv_obj_set_size(obj, lv_pct(80), LV_SIZE_CONTENT);
     lv_obj_set_align(obj, LV_ALIGN_LEFT_MID);
     lv_obj_set_flex_flow(obj, LV_FLEX_FLOW_ROW);
     lv_obj_set_style_pad_gap(obj, 10, 0);
-    lv_obj_add_event_cb(radio_cont, radio_event_handler, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(_radio_cont, radio_event_handler, LV_EVENT_CLICKED, NULL);
 
     lv_snprintf(buf, sizeof(buf), "Red");
-    radiobutton_create(radio_cont, buf);
+    radiobutton_create(_radio_cont, buf);
     lv_snprintf(buf, sizeof(buf), "Green");
-    radiobutton_create(radio_cont, buf);
+    radiobutton_create(_radio_cont, buf);
     lv_snprintf(buf, sizeof(buf), "Blue");
-    radiobutton_create(radio_cont, buf);
+    radiobutton_create(_radio_cont, buf);
     lv_snprintf(buf, sizeof(buf), "Yellow");
-    radiobutton_create(radio_cont, buf);
+    radiobutton_create(_radio_cont, buf);
     lv_snprintf(buf, sizeof(buf), "None");
-    no_color_btn = radiobutton_create(radio_cont, buf);
+    _no_color_btn = radiobutton_create(_radio_cont, buf);
 
     obj = lv_obj_create(tier2);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
     lv_obj_set_size(obj, lv_pct(20), LV_SIZE_CONTENT);
     lv_obj_set_align(obj, LV_ALIGN_RIGHT_MID);
-    switch_btn = obj = lv_btn_create(obj);
+    lv_obj_t *switch_btn = obj = lv_btn_create(obj);
     lv_obj_center(obj);
     lv_obj_add_event_cb(switch_btn, switch_color_event, LV_EVENT_SHORT_CLICKED, NULL);
     lv_obj_t *btn_lbl = lv_label_create(switch_btn);
@@ -222,19 +221,19 @@ static lv_obj_t *page_create(lv_obj_t *parent, int width, int height)
     lv_obj_set_size(obj, lv_pct(50), lv_pct(100));
     lv_obj_set_align(obj, LV_ALIGN_RIGHT_MID);
 
-    btn1 = obj = lv_btn_create(left);
+    _btn1 = obj = lv_btn_create(left);
     lv_obj_set_size(obj, 120, 40);
     lv_obj_center(obj);
     lv_obj_add_event_cb(obj, intense_inc_event, LV_EVENT_SHORT_CLICKED, 0);
-    btn_lbl = lv_label_create(btn1);
+    btn_lbl = lv_label_create(_btn1);
     lv_obj_center(btn_lbl);
     lv_label_set_text(btn_lbl, "Intense Inc");
 
-    btn2 = obj = lv_btn_create(right);
+    _btn2 = obj = lv_btn_create(right);
     lv_obj_set_size(obj, 120, 40);
     lv_obj_center(obj);
     lv_obj_add_event_cb(obj, intense_dec_or_clear_event, LV_EVENT_SHORT_CLICKED, 0);
-    btn_lbl = lv_label_create(btn2);
+    btn_lbl = lv_label_create(_btn2);
     lv_obj_center(btn_lbl);
     lv_label_set_text(btn_lbl, "button 2");
 
@@ -273,7 +272,7 @@ static void frp_demo_launcher(lv_event_t *e)
         void frp_demo_rs_init(void);
         frp_demo_rs_init();
 
-        lv_obj_add_state(lv_obj_get_child(radio_cont, active_index_get()), LV_STATE_CHECKED);
+        lv_obj_add_state(lv_obj_get_child(_radio_cont, active_index_get()), LV_STATE_CHECKED);
 
         lv_label_set_text(lbl, "Stop FRP demo");
         running = true;

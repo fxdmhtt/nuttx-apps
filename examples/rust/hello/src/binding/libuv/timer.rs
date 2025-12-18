@@ -1,4 +1,7 @@
-use std::ffi::{c_int, c_void};
+use std::{
+    ffi::{c_int, c_void},
+    ptr::NonNull,
+};
 
 use super::uv_loop_t;
 
@@ -28,30 +31,29 @@ const UV_TIMER_ALIGN: usize = 8;
 type uv_timer_t = c_void;
 
 #[derive(Debug)]
-pub struct UvTimer(*mut uv_timer_t);
+pub struct UvTimer(NonNull<uv_timer_t>);
 
 impl Drop for UvTimer {
     fn drop(&mut self) {
-        unsafe { uv_timer_drop(self.0) }
+        unsafe { uv_timer_drop(self.0.as_ptr()) }
     }
 }
 
 impl UvTimer {
-    pub fn new(ui_loop: *mut uv_loop_t) -> Self {
-        assert!(!ui_loop.is_null());
+    pub fn new(ui_loop: NonNull<uv_loop_t>) -> Self {
         // assert_eq!(std::mem::size_of::<uv_timer_t>(), unsafe { uv_timer_size });
         // assert_eq!(std::mem::align_of::<uv_timer_t>(), unsafe { uv_timer_align });
 
-        Self(unsafe { uv_timer_new(ui_loop) })
+        Self(NonNull::new(unsafe { uv_timer_new(ui_loop.as_ptr()) }).unwrap())
     }
 
     pub fn start(&self, timeout: u64, state: *mut c_void) {
         assert!(!state.is_null());
-        unsafe { uv_timer_pending(self.0, timeout, state) }
+        unsafe { uv_timer_pending(self.0.as_ptr(), timeout, state) }
     }
 
     pub fn cancel(&self) {
-        unsafe { uv_timer_cancel(self.0) }
+        unsafe { uv_timer_cancel(self.0.as_ptr()) }
     }
 }
 

@@ -13,23 +13,24 @@ use reactive_cache::{effect, Effect, Memo, Signal};
 use stack_cstr::cstr;
 use thiserror::Error;
 
-use crate::binding::lvgl::*;
-use crate::runtime::*;
-use crate::*;
+use crate::{
+    runtime::{lvgl::*, *},
+    *,
+};
 
 extern "C" {
     fn rust_executor_wake();
 }
 
 extern "C" {
-    static mut radio_cont: *mut lv_obj_t;
-    static mut img: *mut lv_obj_t;
-    static mut img_label: *mut lv_obj_t;
-    static mut btn1: *mut lv_obj_t;
-    static mut btn2: *mut lv_obj_t;
-    static mut no_color_btn: *mut lv_obj_t;
-    static mut list: *mut lv_obj_t;
-    static mut slider: *mut lv_obj_t;
+    static mut _radio_cont: *mut lv_obj_t;
+    static mut _img: *mut lv_obj_t;
+    static mut _img_label: *mut lv_obj_t;
+    static mut _btn1: *mut lv_obj_t;
+    static mut _btn2: *mut lv_obj_t;
+    static mut _no_color_btn: *mut lv_obj_t;
+    static mut _list: *mut lv_obj_t;
+    static mut _slider: *mut lv_obj_t;
 
     fn lv_color_make_rs(r: u8, g: u8, b: u8) -> lv_color_t;
     fn create_list_item(parent: *mut lv_obj_t, text: *const c_char) -> *mut lv_obj_t;
@@ -56,6 +57,8 @@ enum AppError {
     NotRunning(#[from] NotRunning),
     #[error(transparent)]
     CancelError(#[from] Cancelled),
+    #[error(transparent)]
+    LVGLError(#[from] LVGLError),
 }
 
 struct ViewModel {
@@ -74,7 +77,16 @@ struct ViewModel {
     cts_fade: RefCell<CancellationTokenSource>,
     cts_anim: RefCell<CancellationTokenSource>,
 
-    hint: RefCell<Option<*mut lv_obj_t>>,
+    hint: RefCell<LvObjHandle>,
+
+    radio_cont: RefCell<LvObjHandle>,
+    img: RefCell<LvObjHandle>,
+    img_label: RefCell<LvObjHandle>,
+    btn1: RefCell<LvObjHandle>,
+    btn2: RefCell<LvObjHandle>,
+    no_color_btn: RefCell<LvObjHandle>,
+    list: RefCell<LvObjHandle>,
+    slider: RefCell<LvObjHandle>,
 }
 
 impl ViewModel {
@@ -135,10 +147,19 @@ impl ViewModel {
 
             effects: effects.into(),
 
-            cts_fade: CancellationTokenSource::new().into(),
-            cts_anim: CancellationTokenSource::new().into(),
+            cts_fade: Default::default(),
+            cts_anim: Default::default(),
 
-            hint: None.into(),
+            hint: Default::default(),
+
+            radio_cont: Default::default(),
+            img: Default::default(),
+            img_label: Default::default(),
+            btn1: Default::default(),
+            btn2: Default::default(),
+            no_color_btn: Default::default(),
+            list: Default::default(),
+            slider: Default::default(),
         }
     }
 }
@@ -176,16 +197,17 @@ fn cts_cancel_and_renew(cts: &RefCell<CancellationTokenSource>) {
     unsafe { rust_executor_wake() }; // necessary!
 }
 
-async fn list_item_fade(obj: *mut lv_obj_t, cnt: usize) -> Result<(), AppError> {
+async fn list_item_fade(obj: &LvObjHandle, cnt: usize) -> Result<(), AppError> {
     let token = vm()?.cts_fade.borrow().token();
 
     stream::iter(linspace(255.0, 0.0, cnt).map(|x: f32| x.round() as u8))
         .map(Ok)
         .try_for_each(|x| {
             let token = token.clone();
+            let obj = obj.clone();
             async move {
                 vm()?;
-                unsafe { lv_obj_set_style_opa(obj, x, LV_PART_MAIN) };
+                unsafe { lv_obj_set_style_opa(obj.try_get()?, x, LV_PART_MAIN) };
                 delay!(Duration::from_millis(100), token)
                     .await
                     .map_err(Into::into)
@@ -207,19 +229,25 @@ async fn intense_animation(target: u8, duration: Duration) -> Result<(), NotRunn
         "Decrease color density"
     };
     let text = cstr!("{header} - {start}");
-    let lbl = unsafe { create_list_item(list, text.as_ptr()) };
+    let lbl = LvObj::from(unsafe {
+        create_list_item(
+            vm()?.list.borrow().try_get().map_err(|_| NotRunning)?,
+            text.as_ptr(),
+        )
+    });
 
     vm()?.recolor_animation.set(true);
     stream::iter(linspace(start as f32, target as f32, ticks as usize).map(|x: f32| x.round() as u8))
         .map(Ok)
         .try_for_each(|cur| {
             let token = token.clone();
+            let lbl = lbl.clone();
 
             async move {
                 vm()?.intense.set(cur);
 
                 let text = cstr!("{header} - {cur}");
-                unsafe { lv_checkbox_set_text(lbl, text.as_ptr()) };
+                unsafe { lv_checkbox_set_text(lbl.try_get()?, text.as_ptr()) };
 
                 delay!(delay_anim, token).await?;
 
@@ -234,16 +262,17 @@ async fn intense_animation(target: u8, duration: Duration) -> Result<(), NotRunn
         })
         .or_else(|e| match e {
             AppError::NotRunning(_) => Err(NotRunning),
+            AppError::LVGLError(_) => Err(NotRunning),
             AppError::CancelError(_) => Ok(()),
         })?;
     vm()?.recolor_animation.set(false);
 
     let token = vm()?.cts_anim.borrow().token();
     let _ = delay!(1, token).await;
-    let _ = list_item_fade(lbl, 15).await;
+    let _ = list_item_fade(&lbl, 15).await;
 
     vm()?;
-    unsafe { lv_obj_delete(lbl) };
+    unsafe { lv_obj_delete(lbl.try_get().map_err(|_| NotRunning)?) };
 
     Ok(())
 }
@@ -312,8 +341,21 @@ extern "C" fn frp_demo_rs_init() {
         .replace(ViewModel::new().into())
         .is_none());
 
+    *vm().unwrap().radio_cont.borrow_mut() = LvObj::from(unsafe { _radio_cont });
+    *vm().unwrap().img.borrow_mut() = LvObj::from(unsafe { _img });
+    *vm().unwrap().img_label.borrow_mut() = LvObj::from(unsafe { _img_label });
+    *vm().unwrap().btn1.borrow_mut() = LvObj::from(unsafe { _btn1 });
+    *vm().unwrap().btn2.borrow_mut() = LvObj::from(unsafe { _btn2 });
+    *vm().unwrap().no_color_btn.borrow_mut() = LvObj::from(unsafe { _no_color_btn });
+    *vm().unwrap().list.borrow_mut() = LvObj::from(unsafe { _list });
+    *vm().unwrap().slider.borrow_mut() = LvObj::from(unsafe { _slider });
+
     vm().unwrap().effects.borrow_mut().extend(vec![
         effect!(|| {
+            let radio_cont = match vm().unwrap().radio_cont.borrow().try_get() {
+                Ok(obj) => obj,
+                Err(_) => return,
+            };
             let id = *vm().unwrap().active_index.get();
             (0..5)
                 .map(|x| match x {
@@ -324,7 +366,7 @@ extern "C" fn frp_demo_rs_init() {
                 .for_each(|(f, id)| unsafe { f(lv_obj_get_child(radio_cont, id), LV_STATE_CHECKED) });
         }),
         BindingSliderValue!(
-            unsafe { slider },
+            vm().unwrap().slider.borrow(),
             vm().unwrap().intense,
             ConvertBack | v | {
                 cts_cancel_and_renew(&vm().unwrap().cts_anim);
@@ -332,6 +374,10 @@ extern "C" fn frp_demo_rs_init() {
             }
         ),
         effect!(|| {
+            let slider = match vm().unwrap().slider.borrow().try_get() {
+                Ok(obj) => obj,
+                Err(_) => return,
+            };
             unsafe {
                 lv_obj_update_flag(
                     slider,
@@ -340,7 +386,7 @@ extern "C" fn frp_demo_rs_init() {
                 );
             };
         }),
-        BindingImageRecolor!(unsafe { img }, {
+        BindingImageRecolor!(vm().unwrap().img.borrow(), {
             match vm().unwrap().state.get() {
                 Some(color) => match color {
                     Color::Red => unsafe { lv_color_make_rs(0xff, 0, 0) },
@@ -351,13 +397,13 @@ extern "C" fn frp_demo_rs_init() {
                 None => unsafe { lv_color_make_rs(0, 0, 0) },
             }
         }),
-        BindingImageRecolorOpa!(unsafe { img }, {
+        BindingImageRecolorOpa!(vm().unwrap().img.borrow(), {
             match (vm().unwrap().state.get(), *vm().unwrap().intense.get()) {
                 (Some(_), intense) => intense,
                 (None, _) => 0,
             }
         }),
-        BindingText!(unsafe { img_label }, {
+        BindingText!(vm().unwrap().img_label.borrow(), {
             vm().unwrap()
                 .state
                 .get()
@@ -365,6 +411,10 @@ extern "C" fn frp_demo_rs_init() {
                 .unwrap_or(cstr!("Original Color"))
         }),
         effect!(|| {
+            let btn1 = match vm().unwrap().btn1.borrow().try_get() {
+                Ok(obj) => obj,
+                Err(_) => return,
+            };
             match (
                 vm().unwrap().state.get(),
                 *vm().unwrap().recolor_animation.get(),
@@ -377,6 +427,10 @@ extern "C" fn frp_demo_rs_init() {
             };
         }),
         effect!(|| {
+            let btn2 = match vm().unwrap().btn2.borrow().try_get() {
+                Ok(obj) => obj,
+                Err(_) => return,
+            };
             match (
                 vm().unwrap().state.get(),
                 *vm().unwrap().recolor_animation.get(),
@@ -388,20 +442,26 @@ extern "C" fn frp_demo_rs_init() {
                 _ => unsafe { lv_obj_remove_state(btn2, LV_STATE_DISABLED) },
             };
         }),
-        BindingText!(unsafe { lv_obj_get_child(btn2, 0) }, {
-            match vm().unwrap().state.get() {
-                Some(_) => cstr!("Intense Dec"),
-                None => cstr!("Clear Log"),
+        BindingText!(
+            match vm().unwrap().btn2.borrow().try_get() {
+                Ok(obj) => LvObj::from(unsafe { lv_obj_get_child(obj, 0) }),
+                Err(_) => return,
+            },
+            {
+                match vm().unwrap().state.get() {
+                    Some(_) => cstr!("Intense Dec"),
+                    None => cstr!("Clear Log"),
+                }
             }
-        }),
-        BindingBgColor!(unsafe { btn2 }, {
+        ),
+        BindingBgColor!(vm().unwrap().btn2.borrow(), {
             match vm().unwrap().state.get() {
                 Some(_) => unsafe { lv_palette_main(LV_PALETTE_BLUE) },
                 None => unsafe { lv_palette_main(LV_PALETTE_RED) },
             }
         }),
         effect!(|| {
-            let btns = unsafe { [no_color_btn] };
+            let btns = [vm().unwrap().no_color_btn.borrow().try_get().unwrap()];
             match *vm().unwrap().recolor_animation.get() {
                 true => btns
                     .iter()
@@ -412,38 +472,45 @@ extern "C" fn frp_demo_rs_init() {
             }
         }),
         effect!(|| {
+            let list = match vm().unwrap().list.borrow().try_get() {
+                Ok(obj) => obj,
+                Err(_) => return,
+            };
             let text = vm()
                 .unwrap()
                 .state
                 .get()
                 .map(|c| cstr!("Recolor to {c:?}"))
                 .unwrap_or(cstr!("Non Recolor!"));
-            let lbl = unsafe { create_list_item(list, text.as_ptr()) };
+            let lbl = LvObj::from(unsafe { create_list_item(list, text.as_ptr()) });
+            assert_eq!(unsafe { lv_obj_get_event_count(lbl.try_get().unwrap()) }, 2);
 
             // Test for event::add / event::remove
             {
-                let item = lbl;
-                let evt1 = event::add(lbl, LV_EVENT_SHORT_CLICKED, move |e| {
+                let item = lbl.clone();
+                let evt1 = event::add(&lbl, LV_EVENT_SHORT_CLICKED, move |e| {
                     let obj = unsafe { lv_event_get_target(e) };
-                    assert_eq!(obj, item);
+                    assert_eq!(obj, item.try_get().unwrap());
                     let text = unsafe { CStr::from_ptr(lv_label_get_text(obj)) };
                     println!("{text:?} Clicked!");
                 });
-                let evt2 = event::add(lbl, LV_EVENT_SHORT_CLICKED, |_| {});
+                let evt2 = event::add(&lbl, LV_EVENT_SHORT_CLICKED, |_| {});
 
-                assert_eq!(unsafe { lv_obj_get_event_count(lbl) }, 3);
-                assert_eq!(
-                    unsafe { lv_event_dsc_get_user_data(lv_obj_get_event_dsc(lbl, 0)) },
-                    std::ptr::null_mut()
-                );
-                assert_eq!(unsafe { lv_obj_get_event_dsc(lbl, 1) }, evt1);
-                assert_eq!(unsafe { lv_obj_get_event_dsc(lbl, 2) }, evt2);
-                assert!(std::ptr::fn_addr_eq(
-                    unsafe { lv_event_dsc_get_cb(lv_obj_get_event_dsc(lbl, 1)) },
-                    unsafe { lv_event_dsc_get_cb(lv_obj_get_event_dsc(lbl, 2)) }
-                ));
+                if let Ok(lbl) = lbl.try_get() {
+                    assert_eq!(unsafe { lv_obj_get_event_count(lbl) }, 4);
+                    assert_eq!(unsafe { lv_obj_get_event_dsc(lbl, 2) }, evt1);
+                    assert_eq!(unsafe { lv_obj_get_event_dsc(lbl, 3) }, evt2);
+                    assert!(std::ptr::fn_addr_eq(
+                        unsafe { lv_event_dsc_get_cb(lv_obj_get_event_dsc(lbl, 2)) },
+                        unsafe { lv_event_dsc_get_cb(lv_obj_get_event_dsc(lbl, 3)) }
+                    ));
+                    assert!(std::ptr::fn_addr_eq(
+                        unsafe { lv_event_dsc_get_cb(lv_obj_get_event_dsc(lbl, 0)) },
+                        unsafe { lv_event_dsc_get_cb(lv_obj_get_event_dsc(lbl, 2)) }
+                    ));
+                }
 
-                assert!(event::remove(lbl, evt2));
+                assert!(event::remove(&lbl, evt2));
             }
 
             let token = vm().unwrap().cts_fade.borrow().token();
@@ -453,11 +520,13 @@ extern "C" fn frp_demo_rs_init() {
                 pin_mut!(delay, cancelled);
 
                 select! {
-                    _ = delay => { let _ = list_item_fade(lbl, 10).await; },
+                    _ = delay => { let _ = list_item_fade(&lbl, 10).await; },
                     _ = cancelled => {},
                 }
 
-                unsafe { lv_obj_delete(lbl) };
+                if let Ok(lbl) = lbl.try_get() {
+                    unsafe { lv_obj_delete(lbl) };
+                }
             });
             vm().unwrap().tasks.gc(); // unnecessary
             println!("{} tasks remaining!", vm().unwrap().tasks.attach(task));
@@ -465,12 +534,12 @@ extern "C" fn frp_demo_rs_init() {
         effect!(|| {
             match *vm().unwrap().list_item_count.get() {
                 0 => {
-                    if vm().unwrap().hint.borrow().is_none() {
-                        unsafe { vm().unwrap().hint.borrow_mut().replace(create_list_hint()) };
-                    }
+                    let mut hint = vm().unwrap().hint.borrow_mut();
+                    assert!(hint.is_null());
+                    *hint = LvObj::from(unsafe { create_list_hint() });
                 }
                 _ => {
-                    if let Some(obj) = vm().unwrap().hint.take() {
+                    if let Ok(obj) = vm().unwrap().hint.borrow().try_get() {
                         unsafe { lv_obj_delete(obj) };
                     }
                 }

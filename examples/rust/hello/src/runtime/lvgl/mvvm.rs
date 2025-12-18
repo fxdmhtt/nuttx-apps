@@ -20,7 +20,10 @@ macro_rules! downgrade {
 macro_rules! BindingText {
     ($obj:expr, $body:block) => {
         reactive_cache::effect!(|| {
-            let obj = $obj;
+            let obj = match $obj.try_get() {
+                Ok(obj) => obj,
+                Err(_) => return,
+            };
             let val = $body;
             unsafe { lv_label_set_text(obj, val.as_ptr() as _) };
         })
@@ -30,7 +33,7 @@ macro_rules! BindingText {
 #[macro_export]
 macro_rules! BindingSliderValue {
     ($obj:expr, $signal:expr, $event:ident, Convert $Convert:expr, ConvertBack $ConvertBack:expr) => {{
-        $crate::runtime::event::add($obj, $event, |e| {
+        $crate::runtime::lvgl::event::add(&$obj, $event, |e| {
             let obj = unsafe { lv_event_get_target(e) };
             let val = unsafe { lv_bar_get_value(obj) } as u8; // Refer to `lv_slider_get_value`
             let val = $ConvertBack(val);
@@ -38,7 +41,10 @@ macro_rules! BindingSliderValue {
         });
 
         reactive_cache::effect!(|| {
-            let obj = $obj;
+            let obj = match $obj.try_get() {
+                Ok(obj) => obj,
+                Err(_) => return,
+            };
             let val = *$signal.get();
             let val = $Convert(val);
             unsafe { lv_bar_set_value(obj, val.into(), LV_ANIM_OFF) }; // Refer to `lv_slider_set_value`
@@ -62,7 +68,10 @@ macro_rules! BindingSliderValue {
 macro_rules! BindingStyle {
     ($obj:expr, $part:ident, $setter:ident, $body:block) => {
         reactive_cache::effect!(|| {
-            let obj = $obj;
+            let obj = match $obj.try_get() {
+                Ok(obj) => obj,
+                Err(_) => return,
+            };
             let val = $body;
             unsafe { $setter(obj, val, $part) };
         })
