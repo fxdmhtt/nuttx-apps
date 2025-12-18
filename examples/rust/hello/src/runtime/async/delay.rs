@@ -159,6 +159,8 @@ impl Delay {
             if token.is_cancelled() {
                 token.register(|| {})
             } else {
+                // To implement a pure stack-based `Delay`, unsafe code is used to avoid `Rc`.
+                //
                 // Unsafe usage warning:
                 //
                 // The following unsafe block dereferences a raw pointer to `s.handle`.
