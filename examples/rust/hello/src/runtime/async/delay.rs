@@ -82,13 +82,12 @@ impl Future for Delay {
             }
         }
 
-        // 2) Now do the rest under a single borrow_mut to reduce multiple borrows.
-        // Create the uv timer only when the delay is still Pending and no handle exists.
+        // 2) Create the uv timer only when the delay is still Pending and no handle exists.
 
         // Working with the `uv_timer_t`
         if matches!(s.state, PollState::Pending) && s.handle.is_none() {
-            let uv_timer = UvTimer::new((unsafe { UI_LOOP }).unwrap());
-            uv_timer.start(this.duration.as_millis() as u64, s as *mut _ as *mut _);
+            let uv_timer = UvTimer::new(&(unsafe { UI_LOOP }).unwrap());
+            uv_timer.start(this.duration.as_millis() as u64, s as *mut _ as _);
             s.handle.replace(uv_timer);
         }
 
@@ -124,10 +123,7 @@ impl Future for Delay {
 impl Delay {
     // Create a new `Delay` which will complete after the specified duration elapses.
     pub fn new(duration: Duration) -> Self {
-        Delay {
-            duration,
-            ..Default::default()
-        }
+        Delay { duration, ..Default::default() }
     }
 
     /// Make this Delay cancellable by the given `CancellationToken`.
@@ -144,8 +140,8 @@ impl Delay {
         let s = this.state.get_mut();
 
         assert!(
-            matches!(this.extra, Extra::Plain),
-            "Delay can only be cancellable once"
+            !matches!(this.extra, Extra::Cancellable(_, _)),
+            "Delay can only be canceled once."
         );
 
         // Register a cancellation callback with the token.

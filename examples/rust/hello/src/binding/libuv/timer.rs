@@ -40,7 +40,7 @@ impl Drop for UvTimer {
 }
 
 impl UvTimer {
-    pub fn new(ui_loop: NonNull<uv_loop_t>) -> Self {
+    pub fn new(ui_loop: &NonNull<uv_loop_t>) -> Self {
         // assert_eq!(std::mem::size_of::<uv_timer_t>(), unsafe { uv_timer_size });
         // assert_eq!(std::mem::align_of::<uv_timer_t>(), unsafe { uv_timer_align });
 

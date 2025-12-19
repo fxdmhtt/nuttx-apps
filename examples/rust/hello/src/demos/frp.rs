@@ -535,7 +535,7 @@ extern "C" fn frp_demo_rs_init() {
             match *vm().unwrap().list_item_count.get() {
                 0 => {
                     let mut hint = vm().unwrap().hint.borrow_mut();
-                    assert!(hint.is_null());
+                    assert!(hint.try_get().is_err());
                     *hint = LvObj::from(unsafe { create_list_hint() });
                 }
                 _ => {

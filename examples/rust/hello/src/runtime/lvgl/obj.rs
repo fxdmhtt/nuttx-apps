@@ -13,9 +13,7 @@ use std::{
 use once_cell::sync::Lazy;
 use thiserror::Error;
 
-use crate::runtime::lvgl::{
-    event, lv_event_dsc_get_user_data, lv_event_get_target, lv_obj_get_event_count, lv_obj_get_event_dsc, lv_obj_t, LV_EVENT_DELETE,
-};
+use crate::{binding::lvgl::*, runtime::lvgl::event};
 
 // The best practice is to use `HashMap`,
 // but the reason we're not using `HashMap` here is that
@@ -31,21 +29,72 @@ static mut LVOBJ_TABLE: Lazy<HashMap<*mut lv_obj_t, Rc<LvObj>>> = Lazy::new(Hash
 #[error("The LVGL object has been deleted!")]
 pub struct Deleted;
 
+#[derive(Error, Copy, Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd, Hash)]
+#[error("The LVGL object expected is a null pointer actually!")]
+pub struct NullPtr;
+
 #[derive(Error, Debug)]
 pub enum LVGLError {
     #[error(transparent)]
     Deleted(#[from] Deleted),
+    #[error(transparent)]
+    NullPtr(#[from] NullPtr),
 }
 
 #[derive(Debug)]
 pub struct LvObj(NonNull<lv_obj_t>);
 
-impl LvObj {
-    fn new(obj: *mut lv_obj_t) -> Self {
-        Self(NonNull::new(obj).unwrap())
-    }
+impl TryFrom<*mut lv_obj_t> for LvObj {
+    type Error = NullPtr;
 
+    fn try_from(value: *mut lv_obj_t) -> Result<Self, Self::Error> {
+        NonNull::new(value).ok_or(NullPtr).map(LvObj)
+    }
+}
+
+impl From<LvObj> for NonNull<lv_obj_t> {
+    fn from(value: LvObj) -> Self {
+        value.0
+    }
+}
+
+impl From<LvObj> for *mut lv_obj_t {
+    fn from(value: LvObj) -> Self {
+        <NonNull<lv_obj_t> as From<LvObj>>::from(value).as_ptr()
+    }
+}
+
+impl From<&LvObj> for NonNull<lv_obj_t> {
+    fn from(value: &LvObj) -> Self {
+        value.0
+    }
+}
+
+impl From<&LvObj> for *mut lv_obj_t {
+    fn from(value: &LvObj) -> Self {
+        <NonNull<lv_obj_t> as From<&LvObj>>::from(value).as_ptr()
+    }
+}
+
+impl LvObj {
     pub fn from(obj: *mut lv_obj_t) -> LvObjHandle {
+        LvObjHandle::try_from(obj).unwrap()
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct LvObjHandle(Weak<LvObj>);
+
+impl Clone for LvObjHandle {
+    fn clone(&self) -> Self {
+        Self(Weak::clone(&self.0))
+    }
+}
+
+impl TryFrom<*mut lv_obj_t> for LvObjHandle {
+    type Error = NullPtr;
+
+    fn try_from(value: *mut lv_obj_t) -> Result<Self, Self::Error> {
         #[cfg(debug_assertions)]
         {
             // This is a simple stress test to check the reliability of `HashMap`.
@@ -56,16 +105,16 @@ impl LvObj {
             let mut map = HashMap::new();
 
             for _ in 0..0xff {
-                let obj = unsafe { super::lv_obj_create(super::lv_screen_active()) };
-                unsafe { super::lv_obj_delete(obj) };
+                let obj = unsafe { lv_obj_create(lv_screen_active()) };
+                unsafe { lv_obj_delete(obj) };
                 let owner = Rc::new(NonNull::new(obj).unwrap());
                 map.insert(obj, owner);
             }
         }
 
-        let owner = Rc::new(Self::new(obj));
+        let owner = Rc::new(<LvObj as TryFrom<*mut lv_obj_t>>::try_from(value)?);
         let weakref = Rc::downgrade(&owner);
-        unsafe { LVOBJ_TABLE.insert(obj, owner) };
+        unsafe { LVOBJ_TABLE.insert(value, owner) };
 
         let obj = LvObjHandle(weakref);
 
@@ -84,12 +133,73 @@ impl LvObj {
             );
         }
 
-        obj
+        Ok(obj)
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct LvObjHandle(Weak<LvObj>);
+impl From<LvObjHandle> for Weak<LvObj> {
+    fn from(value: LvObjHandle) -> Self {
+        value.0
+    }
+}
+
+impl TryFrom<LvObjHandle> for Rc<LvObj> {
+    type Error = Deleted;
+
+    fn try_from(value: LvObjHandle) -> Result<Self, Self::Error> {
+        <Weak<LvObj> as From<LvObjHandle>>::from(value)
+            .upgrade()
+            .ok_or(Deleted)
+    }
+}
+
+impl TryFrom<LvObjHandle> for NonNull<lv_obj_t> {
+    type Error = Deleted;
+
+    fn try_from(value: LvObjHandle) -> Result<Self, Self::Error> {
+        <Rc<LvObj> as TryFrom<LvObjHandle>>::try_from(value).map(|v| v.0)
+    }
+}
+
+impl TryFrom<LvObjHandle> for *mut lv_obj_t {
+    type Error = Deleted;
+
+    fn try_from(value: LvObjHandle) -> Result<Self, Self::Error> {
+        <NonNull<lv_obj_t> as TryFrom<LvObjHandle>>::try_from(value).map(|v| v.as_ptr())
+    }
+}
+
+impl From<&LvObjHandle> for Weak<LvObj> {
+    fn from(value: &LvObjHandle) -> Self {
+        value.clone().0
+    }
+}
+
+impl TryFrom<&LvObjHandle> for Rc<LvObj> {
+    type Error = Deleted;
+
+    fn try_from(value: &LvObjHandle) -> Result<Self, Self::Error> {
+        <Weak<LvObj> as From<&LvObjHandle>>::from(value)
+            .upgrade()
+            .ok_or(Deleted)
+    }
+}
+
+impl TryFrom<&LvObjHandle> for NonNull<lv_obj_t> {
+    type Error = Deleted;
+
+    fn try_from(value: &LvObjHandle) -> Result<Self, Self::Error> {
+        <Rc<LvObj> as TryFrom<&LvObjHandle>>::try_from(value).map(|v| v.0)
+    }
+}
+
+impl TryFrom<&LvObjHandle> for *mut lv_obj_t {
+    type Error = Deleted;
+
+    fn try_from(value: &LvObjHandle) -> Result<Self, Self::Error> {
+        <NonNull<lv_obj_t> as TryFrom<&LvObjHandle>>::try_from(value).map(|v| v.as_ptr())
+    }
+}
 
 impl LvObjHandle {
     /// Try to get the underlying `lv_obj_t *`.
@@ -98,9 +208,5 @@ impl LvObjHandle {
     pub fn try_get(&self) -> Result<*mut lv_obj_t, LVGLError> {
         let obj = self.0.upgrade().ok_or(Deleted)?;
         Ok(obj.0.as_ptr())
-    }
-
-    pub fn is_null(&self) -> bool {
-        self.0.upgrade().is_none()
     }
 }

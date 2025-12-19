@@ -64,7 +64,6 @@ void uv_timer_pending(uv_timer_t *handle, uint64_t timeout, void *state)
     uv_handle_set_data((uv_handle_t *)handle, state);
     uv_timer_start(handle, rust_wake_and_poll, timeout, 0);
 }
-#endif
 
 void uv_timer_cancel(uv_timer_t *handle)
 {
@@ -72,3 +71,4 @@ void uv_timer_cancel(uv_timer_t *handle)
 
     uv_timer_stop(handle);
 }
+#endif

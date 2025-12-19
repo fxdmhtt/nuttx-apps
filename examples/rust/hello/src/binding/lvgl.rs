@@ -3,6 +3,8 @@
 
 use std::ffi::{c_char, c_void};
 
+pub mod anim;
+
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct lv_area_t {

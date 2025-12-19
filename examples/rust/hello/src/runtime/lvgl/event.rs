@@ -1,13 +1,6 @@
 use std::ptr::null_mut;
 
-use crate::{
-    binding::lvgl::{
-        lv_event_cb_t, lv_event_code_t, lv_event_dsc_get_cb, lv_event_dsc_get_user_data, lv_event_dsc_t, lv_event_get_target, lv_event_get_user_data,
-        lv_event_t, lv_obj_add_event_cb, lv_obj_get_event_count, lv_obj_get_event_dsc, lv_obj_remove_event_cb, lv_obj_remove_event_dsc,
-        LV_EVENT_DELETE,
-    },
-    runtime::lvgl::LvObjHandle,
-};
+use crate::{binding::lvgl::*, runtime::lvgl::LvObjHandle};
 
 struct Closure(Box<dyn Fn(*mut lv_event_t)>);
 
