@@ -75,6 +75,8 @@ unsafe impl GlobalAlloc for CountingAllocator {
             }
         }
 
+        printf(c"[TRACE]   alloc: %u\n".as_ptr(), allocator_stats());
+
         // self.traced.store(false, Ordering::SeqCst);
         // let _result = {
         //     let mut frames: *mut *mut c_char = null_mut();
@@ -107,6 +109,8 @@ unsafe impl GlobalAlloc for CountingAllocator {
             self.allocated.fetch_sub(layout.size(), Ordering::SeqCst);
             *entry = Entry::new();
         }
+
+        printf(c"[TRACE] dealloc: %u\n".as_ptr(), allocator_stats());
     }
 }
 
@@ -134,6 +138,7 @@ pub fn allocator_zero() {
 
 extern "C" {
     fn free(ptr: *mut c_void);
+    fn printf(fmt: *const c_char, ...) -> c_int;
 }
 
 extern "C" {
