@@ -53,6 +53,17 @@ impl Drop for ViewModel {
         if let Ok(root) = self.ui_tree_root.borrow().try_get() {
             unsafe { lv_obj_delete(root) };
         }
+
+        #[cfg(debug_assertions)]
+        {
+            assert_eq!(Rc::strong_count(&self.tasks), 1);
+            assert_eq!(Rc::strong_count(&self.state), 1);
+            self.effects
+                .iter()
+                .map(Rc::strong_count)
+                .for_each(|c| assert_eq!(c, 1));
+            assert_eq!(Rc::strong_count(&self.game), 1);
+        }
     }
 }
 
@@ -133,7 +144,7 @@ impl ViewModel {
 
         let bg_img = LvObj::from(bg_img);
         {
-            random_fill(self.game.clone(), &bg_img);
+            random_fill(&self.game, &bg_img);
 
             let state = self.state.clone();
             let game = self.game.clone();
@@ -156,12 +167,12 @@ impl ViewModel {
                     if path.is_empty() {
                         return;
                     }
-                    dbg!(&path);
+                    // dbg!(&path);
 
                     let parent = unsafe { lv_event_get_target(e) };
                     lv_obj_remove_flag(parent, LV_OBJ_FLAG_CLICKABLE);
 
-                    let tasks: Vec<_> = path
+                    let tasks = path
                         .into_iter()
                         .map(|Path2D { orig, dest, end }| {
                             let (x1, y1) = NUM_COORDS[orig.row][orig.col];
@@ -193,7 +204,7 @@ impl ViewModel {
                             }
                         })
                         .map(TaskRun)
-                        .collect();
+                        .collect::<Vec<_>>();
 
                     join_all(tasks)
                         .await
@@ -222,7 +233,7 @@ impl ViewModel {
                         state.set(State::Win);
                     }
 
-                    random_fill(game.clone(), &bg_img);
+                    random_fill(&game, &bg_img);
 
                     if game.borrow().is_it_over() {
                         println!("游戏结束");
@@ -337,16 +348,16 @@ unsafe fn create_imgs_from_nums(parent: *mut lv_obj_t, num: usize) -> *mut lv_ob
 }
 
 unsafe fn search_num(parent: *mut lv_obj_t, x: i32, y: i32) -> *mut lv_obj_t {
-    let objs: Vec<_> = (0..lv_obj_get_child_count(parent))
+    let objs = (0..lv_obj_get_child_count(parent))
         .map(|i| lv_obj_get_child(parent, i as i32))
         .filter(|o| lv_obj_get_x(*o) == x && lv_obj_get_y(*o) == y)
-        .collect();
+        .collect::<Vec<_>>();
 
-    assert!(objs.len() == 1);
+    assert_eq!(objs.len(), 1);
     objs[0]
 }
 
-fn random_fill(game: Rc<RefCell<Game2048>>, parent: &LvObjHandle) {
+fn random_fill(game: &Rc<RefCell<Game2048>>, parent: &LvObjHandle) {
     let (x, p) = game.borrow_mut().random_fill().unwrap();
     println!("{}", game.borrow());
 

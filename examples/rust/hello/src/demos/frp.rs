@@ -89,6 +89,24 @@ struct ViewModel {
     slider: RefCell<LvObjHandle>,
 }
 
+impl Drop for ViewModel {
+    fn drop(&mut self) {
+        #[cfg(debug_assertions)]
+        {
+            assert_eq!(Rc::strong_count(&self.active_index), 1);
+            assert_eq!(Rc::strong_count(&self.intense), 1);
+            assert_eq!(Rc::strong_count(&self.recolor_animation), 1);
+            assert_eq!(Rc::strong_count(&self.list_item_count), 1);
+            assert_eq!(Rc::strong_count(&self.state), 1);
+            self.effects
+                .borrow()
+                .iter()
+                .map(Rc::strong_count)
+                .for_each(|c| assert_eq!(c, 1));
+        }
+    }
+}
+
 impl ViewModel {
     fn new() -> Self {
         let tasks = TaskManager::new();

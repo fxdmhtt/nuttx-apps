@@ -12,6 +12,7 @@ use std::{
 use async_cancellation_token::{CancellationToken, CancellationTokenRegistration, Cancelled, CancelledFuture};
 use pin_project::pin_project;
 
+use crate::binding::lvgl::anim::LvAnim as Anim;
 use crate::runtime::lvgl::*;
 
 #[pin_project]
@@ -30,8 +31,16 @@ pub struct LvAnim<'a> {
 struct State {
     state: PollState,
     waker: Option<Waker>,
-    handle: Rc<RefCell<Option<crate::binding::lvgl::anim::LvAnim>>>,
-    completed_cb: Option<lv_anim_completed_cb_t>,
+    handle: Rc<RefCell<Option<Anim>>>,
+}
+
+impl Drop for State {
+    fn drop(&mut self) {
+        #[cfg(debug_assertions)]
+        {
+            assert_eq!(Rc::strong_count(&self.handle), 1);
+        }
+    }
 }
 
 #[derive(Debug, Default, Copy, Clone)]
@@ -43,9 +52,7 @@ enum PollState {
 }
 
 #[derive(Debug, Default)]
-pub struct Options {
-    completed_cb: Option<lv_anim_completed_cb_t>,
-}
+pub struct Options {}
 
 #[derive(Default)]
 enum Extra {
@@ -70,7 +77,7 @@ impl Future for LvAnim<'_> {
         }
 
         if matches!(s.state, PollState::Pending) && s.handle.borrow().is_none() {
-            let lv_anim = crate::binding::lvgl::anim::LvAnim::new();
+            let lv_anim = Anim::new();
             lv_anim.start(
                 this.var,
                 *this.exec_cb,
@@ -113,7 +120,6 @@ impl<'a> LvAnim<'a> {
     }
 
     pub fn set_options(&mut self, options: Options) {
-        self.state.completed_cb = options.completed_cb;
         self.options = options;
     }
 
@@ -150,10 +156,6 @@ extern "C" fn rust_anim_wake(state: *mut c_void) {
     let s = unsafe { &mut *(state as *mut State) };
 
     assert!(matches!(s.state, PollState::Pending));
-
-    if let Some(cb) = s.completed_cb {
-        unsafe { cb(s.handle.borrow().as_ref().unwrap().get().unwrap().as_ptr()) };
-    }
 
     s.state = PollState::Completed;
     if let Some(waker) = s.waker.take() {

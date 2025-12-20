@@ -39,12 +39,12 @@ unsafe extern "C" fn closures_cleanup(e: *mut lv_event_t) {
     // However, there is a risk of an early return between these calls, which can break
     // the assumption. If necessary, consider calling the `remove` function to clean up
     // events one by one more precisely.
-    let _ = (0..lv_obj_get_event_count(obj))
+    (0..lv_obj_get_event_count(obj))
         .map(|i| lv_obj_get_event_dsc(obj, i))
         .filter(|dsc| std::ptr::fn_addr_eq(lv_event_dsc_get_cb(*dsc), closure_call as lv_event_cb_t))
         .map(|dsc| lv_event_dsc_get_user_data(dsc))
         .map(|closure| Box::from_raw(closure as *mut Closure))
-        .collect::<Vec<_>>();
+        .for_each(drop);
 }
 
 unsafe extern "C" fn closure_call(e: *mut lv_event_t) {

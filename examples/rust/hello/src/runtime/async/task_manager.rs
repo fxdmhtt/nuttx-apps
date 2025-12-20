@@ -11,6 +11,15 @@ pub struct TaskManager {
     _gc_task: Option<Task<()>>,
 }
 
+impl Drop for TaskManager {
+    fn drop(&mut self) {
+        #[cfg(debug_assertions)]
+        {
+            assert_eq!(Rc::strong_count(&self.tasks), 1);
+        }
+    }
+}
+
 impl TaskManager {
     pub fn new() -> Self {
         Default::default()

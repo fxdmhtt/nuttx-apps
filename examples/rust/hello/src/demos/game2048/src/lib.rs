@@ -1,30 +1,12 @@
 use core::fmt;
-use rand::{Rng, rngs::ThreadRng};
+use rand::{Rng, SeedableRng, rngs::SmallRng};
 use std::sync::LazyLock;
+use thiserror::Error;
 use ultraviolet::{Mat4, Vec4};
 
-// Used by getrandom / rand crates
-#[unsafe(no_mangle)]
-unsafe extern "Rust" fn __getrandom_v03_custom(
-    dest: *mut u8,
-    len: usize,
-) -> Result<(), getrandom::Error> {
-    let mut offset = 0;
-    while offset < len {
-        let r = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-            .to_ne_bytes();
-        let copy_len = core::cmp::min(r.len(), len - offset);
-
-        unsafe { core::ptr::copy_nonoverlapping(r.as_ptr(), dest.add(offset), copy_len) };
-
-        offset += copy_len;
-    }
-
-    Ok(())
-}
+#[derive(Error, Copy, Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd, Hash)]
+#[error("The chessboard is full.")]
+pub struct ChessboardFull;
 
 pub struct Game2048 {
     m: Mat4,
@@ -120,28 +102,31 @@ impl Game2048 {
             .collect()
     }
 
-    fn random_select_space(&mut self, rng: &mut ThreadRng) -> Option<Coord> {
+    fn random_select_space(&mut self, rng: &mut SmallRng) -> Result<Coord, ChessboardFull> {
         let positions = self.select_space();
 
-        if positions.is_empty() {
-            None
-        } else {
-            Some(positions[rng.random_range(0..positions.len())])
+        match positions.is_empty() {
+            true => Err(ChessboardFull),
+            false => Ok(positions[rng.random_range(0..positions.len())]),
         }
     }
 
-    pub fn random_fill(&mut self) -> Option<(usize, Coord)> {
-        let mut rng = rand::rng();
+    pub fn random_fill(&mut self) -> Result<(usize, Coord), ChessboardFull> {
+        let mut rng = SmallRng::seed_from_u64(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis()
+                .try_into()
+                .unwrap(),
+        );
 
-        if let Some(Coord { row, col }) = self.random_select_space(&mut rng) {
-            let x = ((rng.random_bool(0.5) as i32 as f32 + 1.0) * 2.0).round();
-            assert!(x == 2.0 || x == 4.0);
+        let Coord { row, col } = self.random_select_space(&mut rng)?;
+        let x = ((rng.random_bool(0.5) as i32 as f32 + 1.0) * 2.0).round();
+        assert!(x == 2.0 || x == 4.0);
 
-            self.m[col][row] = x;
-            Some((x as usize, Coord { row, col }))
-        } else {
-            None
-        }
+        self.m[col][row] = x;
+        Ok((x as usize, Coord { row, col }))
     }
 
     fn is_all_distinct(&self) -> bool {
@@ -220,14 +205,14 @@ static REV: LazyLock<Mat4> = LazyLock::new(|| {
 });
 
 fn reduce_col(v: Vec4) -> (Vec4, usize, Vec<Path1D>) {
-    let x: Vec<_> = [v.x, v.y, v.z, v.w].into_iter().filter(|x| *x != 0.0).collect();
+    let x = [v.x, v.y, v.z, v.w].into_iter().filter(|x| *x != 0.0).collect::<Vec<_>>();
 
-    let o: Vec<_> = [v.x, v.y, v.z, v.w]
+    let o = [v.x, v.y, v.z, v.w]
         .into_iter()
         .enumerate()
         .filter(|(_, x)| *x != 0.0)
         .map(|(orig, _)| orig)
-        .collect();
+        .collect::<Vec<_>>();
 
     let (vec, dscore, mut ps) = match x.len() {
         0 => ([0.0, 0.0, 0.0, 0.0].into(), 0, vec![]),
