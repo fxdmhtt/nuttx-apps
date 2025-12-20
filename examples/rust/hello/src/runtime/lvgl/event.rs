@@ -1,11 +1,6 @@
 use std::ptr::null_mut;
 
-use crate::binding::lvgl::{
-    lv_event_cb_t, lv_event_code_t, lv_event_dsc_get_cb, lv_event_dsc_get_user_data,
-    lv_event_dsc_t, lv_event_get_target, lv_event_get_user_data, lv_event_t, lv_obj_add_event_cb,
-    lv_obj_get_event_count, lv_obj_get_event_dsc, lv_obj_remove_event_dsc, lv_obj_t,
-    LV_EVENT_DELETE,
-};
+use crate::{binding::lvgl::*, runtime::lvgl::LvObjHandle};
 
 struct Closure(Box<dyn Fn(*mut lv_event_t)>);
 
@@ -46,9 +41,7 @@ unsafe extern "C" fn closures_cleanup(e: *mut lv_event_t) {
     // events one by one more precisely.
     let _ = (0..lv_obj_get_event_count(obj))
         .map(|i| lv_obj_get_event_dsc(obj, i))
-        .filter(|dsc| {
-            std::ptr::fn_addr_eq(lv_event_dsc_get_cb(*dsc), closure_call as lv_event_cb_t)
-        })
+        .filter(|dsc| std::ptr::fn_addr_eq(lv_event_dsc_get_cb(*dsc), closure_call as lv_event_cb_t))
         .map(|dsc| lv_event_dsc_get_user_data(dsc))
         .map(|closure| Box::from_raw(closure as *mut Closure))
         .collect::<Vec<_>>();
@@ -59,24 +52,80 @@ unsafe extern "C" fn closure_call(e: *mut lv_event_t) {
     (*closure).0(e)
 }
 
-pub fn add(
-    obj: *mut lv_obj_t,
-    filter: lv_event_code_t,
-    event_cb: impl Fn(*mut lv_event_t) + 'static,
-) -> *mut lv_event_dsc_t {
-    if !(0..unsafe { lv_obj_get_event_count(obj) })
-        .map(|i| unsafe { lv_obj_get_event_dsc(obj, i) })
-        .map(|dsc| unsafe { lv_event_dsc_get_cb(dsc) })
-        .any(|cb| std::ptr::fn_addr_eq(cb, closures_cleanup as lv_event_cb_t))
-    {
-        unsafe { lv_obj_add_event_cb(obj, closures_cleanup, LV_EVENT_DELETE, null_mut()) };
-    }
+pub fn add(obj: &LvObjHandle, filter: lv_event_code_t, event_cb: impl Fn(*mut lv_event_t) + 'static) -> *mut lv_event_dsc_t {
+    let obj = match obj.try_get() {
+        Ok(obj) => obj,
+        Err(_) => {
+            #[cfg(debug_assertions)]
+            panic!();
 
-    let closure = Box::into_raw(Box::new(Closure::new(event_cb)));
-    unsafe { lv_obj_add_event_cb(obj, closure_call, filter, closure as _) }
+            #[cfg(not(debug_assertions))]
+            return null_mut();
+        }
+    };
+
+    if filter == LV_EVENT_DELETE {
+        // The `closures_cleanup` callback for the `LV_EVENT_DELETE` event
+        // must be invoked at the very last moment, as its function is
+        // to release memory allocated in Rust by other events.
+        //
+        // If there are multiple handlers for the `LV_EVENT_DELETE` event,
+        // invoking the `closures_cleanup` callback first will lead to
+        // memory errors in subsequent callbacks.
+        //
+        // The correct order is to invoke all other callbacks for the
+        // `LV_EVENT_DELETE` event first, then call `closures_cleanup`
+        // to clean up the memory, and finally the `lv_obj_t` object will
+        // be completely deleted.
+        //
+        // So, when registering each handler for the `LV_EVENT_DELETE` event,
+        // the `closures_cleanup` callback needs to be removed first,
+        // and then added again after the event handler function is registered.
+        //
+        // If LVGL provided a method to move the order of event handler functions,
+        // this part of the code could be simplified.
+        unsafe { lv_obj_remove_event_cb(obj, closures_cleanup) };
+
+        let closure = Box::into_raw(Box::new(Closure::new(event_cb)));
+        let dsc = unsafe { lv_obj_add_event_cb(obj, closure_call, filter, closure as _) };
+
+        unsafe { lv_obj_add_event_cb(obj, closures_cleanup, LV_EVENT_DELETE, null_mut()) };
+
+        dsc
+    } else {
+        if !(0..unsafe { lv_obj_get_event_count(obj) })
+            .map(|i| unsafe { lv_obj_get_event_dsc(obj, i) })
+            .map(|dsc| unsafe { lv_event_dsc_get_cb(dsc) })
+            .any(|cb| std::ptr::fn_addr_eq(cb, closures_cleanup as lv_event_cb_t))
+        {
+            unsafe { lv_obj_add_event_cb(obj, closures_cleanup, LV_EVENT_DELETE, null_mut()) };
+        }
+
+        let closure = Box::into_raw(Box::new(Closure::new(event_cb)));
+        unsafe { lv_obj_add_event_cb(obj, closure_call, filter, closure as _) }
+    }
 }
 
-pub fn remove(obj: *mut lv_obj_t, dsc: *mut lv_event_dsc_t) -> bool {
+pub fn remove(obj: &LvObjHandle, dsc: *mut lv_event_dsc_t) -> bool {
+    let obj = match obj.try_get() {
+        Ok(obj) => obj,
+        Err(_) => {
+            #[cfg(debug_assertions)]
+            panic!();
+
+            #[cfg(not(debug_assertions))]
+            return false;
+        }
+    };
+
+    #[cfg(debug_assertions)]
+    assert!(!dsc.is_null());
+
+    #[cfg(not(debug_assertions))]
+    if dsc.is_null() {
+        return false;
+    }
+
     if (0..unsafe { lv_obj_get_event_count(obj) })
         .map(|i| unsafe { lv_obj_get_event_dsc(obj, i) })
         .any(|d| d == dsc)

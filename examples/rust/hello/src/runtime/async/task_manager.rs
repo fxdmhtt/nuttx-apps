@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc, time::Duration};
 use async_executor::Task;
 use futures::{future::LocalBoxFuture, FutureExt};
 
-use crate::runtime::delay::Delay;
+use crate::runtime::Delay;
 
 #[derive(Debug, Default)]
 pub struct TaskManager {

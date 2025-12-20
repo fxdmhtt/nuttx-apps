@@ -6,9 +6,7 @@ use std::{
     time::Duration,
 };
 
-use async_cancellation_token::{
-    CancellationToken, CancellationTokenRegistration, Cancelled, CancelledFuture,
-};
+use async_cancellation_token::{CancellationToken, CancellationTokenRegistration, Cancelled, CancelledFuture};
 use pin_project::pin_project;
 
 use crate::{binding::libuv::UvTimer, runtime::UI_LOOP};
@@ -84,13 +82,12 @@ impl Future for Delay {
             }
         }
 
-        // 2) Now do the rest under a single borrow_mut to reduce multiple borrows.
-        // Create the uv timer only when the delay is still Pending and no handle exists.
+        // 2) Create the uv timer only when the delay is still Pending and no handle exists.
 
         // Working with the `uv_timer_t`
         if matches!(s.state, PollState::Pending) && s.handle.is_none() {
-            let uv_timer = UvTimer::new(unsafe { UI_LOOP });
-            uv_timer.start(this.duration.as_millis() as u64, s as *mut _ as *mut _);
+            let uv_timer = UvTimer::new(&(unsafe { UI_LOOP }).unwrap());
+            uv_timer.start(this.duration.as_millis() as u64, s as *mut _ as _);
             s.handle.replace(uv_timer);
         }
 
@@ -126,10 +123,7 @@ impl Future for Delay {
 impl Delay {
     // Create a new `Delay` which will complete after the specified duration elapses.
     pub fn new(duration: Duration) -> Self {
-        Delay {
-            duration,
-            ..Default::default()
-        }
+        Delay { duration, ..Default::default() }
     }
 
     /// Make this Delay cancellable by the given `CancellationToken`.
@@ -146,8 +140,8 @@ impl Delay {
         let s = this.state.get_mut();
 
         assert!(
-            matches!(this.extra, Extra::Plain),
-            "Delay can only be cancellable once"
+            !matches!(this.extra, Extra::Cancellable(_, _)),
+            "Delay can only be canceled once."
         );
 
         // Register a cancellation callback with the token.
@@ -161,6 +155,8 @@ impl Delay {
             if token.is_cancelled() {
                 token.register(|| {})
             } else {
+                // To implement a pure stack-based `Delay`, unsafe code is used to avoid `Rc`.
+                //
                 // Unsafe usage warning:
                 //
                 // The following unsafe block dereferences a raw pointer to `s.handle`.
@@ -211,7 +207,7 @@ extern "C" fn rust_delay_wake(state: *mut c_void) {
 #[macro_export]
 macro_rules! delay {
     ($secs:literal) => {
-        $crate::runtime::delay::Delay::new(std::time::Duration::from_secs($secs))
+        $crate::runtime::Delay::new(std::time::Duration::from_secs($secs))
     };
     ($secs:literal, $token:expr) => {
         async {
@@ -222,7 +218,7 @@ macro_rules! delay {
         }
     };
     ($duration:expr) => {
-        $crate::runtime::delay::Delay::new($duration)
+        $crate::runtime::Delay::new($duration)
     };
     ($duration:expr, $token:expr) => {
         async {
