@@ -32,9 +32,14 @@ impl TaskManager {
             let tasks = Rc::downgrade(&tasks);
             spawner(
                 async move {
-                    while let Some(tasks) = tasks.upgrade() {
-                        tasks.borrow_mut().retain(|t| !t.is_finished());
-                        // println!("TaskManager: {} tasks remaining!", tasks.borrow().len());
+                    loop {
+                        match tasks.upgrade() {
+                            Some(tasks) => {
+                                tasks.borrow_mut().retain(|t| !t.is_finished());
+                                // println!("TaskManager: {} tasks remaining!", tasks.borrow().len());
+                            }
+                            None => break,
+                        }
                         let _ = Delay::new(Duration::from_millis(1000)).await;
                     }
                 }

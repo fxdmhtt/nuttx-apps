@@ -146,17 +146,13 @@ impl ViewModel {
         {
             random_fill(&self.game, &bg_img);
 
-            let state = self.state.clone();
-            let game = self.game.clone();
-            let tasks = self.tasks.clone();
-            let bg_img = bg_img.clone();
+            clone!(self.state, self.game, self.tasks);
+            clone!(bg_img);
             event::add(&bg_img.clone(), LV_EVENT_GESTURE, move |e| {
-                let state = state.clone();
-                let game = game.clone();
-                let bg_img = bg_img.clone();
-
+                clone!(state, game, bg_img);
+                let gesture = lv_indev_get_gesture_dir(lv_indev_active());
                 let task = TaskRun(async move {
-                    let path = match lv_indev_get_gesture_dir(lv_indev_active()) {
+                    let path = match gesture {
                         LV_DIR_LEFT => game.borrow_mut().left(),
                         LV_DIR_RIGHT => game.borrow_mut().right(),
                         LV_DIR_TOP => game.borrow_mut().up(),

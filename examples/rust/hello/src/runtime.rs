@@ -33,3 +33,27 @@ pub fn TaskRun<T: 'static>(future: impl Future<Output = T> + 'static) -> Task<T>
     executor().try_tick_all();
     task
 }
+
+#[macro_export]
+macro_rules! clone {
+    ( $( $var:ident ),* $(,)? ) => {
+        $(
+            let $var = $var.clone();
+        )*
+    };
+
+    ( $( $self:ident . $field:ident ),* $(,)? ) => {
+        $(
+            let $field = $self.$field.clone();
+        )*
+    };
+}
+
+#[macro_export]
+macro_rules! downgrade {
+    ( $( $var:ident ),* $(,)? ) => {
+        $(
+            let $var = std::rc::Rc::downgrade(&$var);
+        )*
+    };
+}

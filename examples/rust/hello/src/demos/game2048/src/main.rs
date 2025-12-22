@@ -8,12 +8,13 @@ fn main() -> crossterm::Result<()> {
     println!("按方向键进行游戏。按 'Esc' 退出游戏。");
 
     let mut g = Game2048::default();
-    g.random_fill();
+    let _ = g.random_fill();
     println!("{g}");
 
     loop {
         if let Event::Key(key_event) = read()? {
-            if key_event.kind != KeyEventKind::Release {
+            // Compatible with Linux
+            if key_event.kind != KeyEventKind::Press {
                 continue;
             }
 
@@ -42,7 +43,7 @@ fn main() -> crossterm::Result<()> {
                 break;
             }
 
-            g.random_fill();
+            let _ = g.random_fill();
             println!("{g}");
 
             if g.is_it_over() {

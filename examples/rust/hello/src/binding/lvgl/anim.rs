@@ -34,52 +34,65 @@ impl LvAnim {
         unsafe { assert!(lv_anim_cancel(self.0.as_ptr())) }
     }
 
-    pub fn set_delay(&self, delay: u32) {
+    pub fn set_delay(self, delay: u32) -> Self {
         unsafe { lv_anim_set_delay(self.0.as_ptr(), delay) };
+        self
     }
 
-    pub fn set_custom_exec_cb(&self, exec_cb: lv_anim_custom_exec_cb_t) {
+    pub fn set_custom_exec_cb(self, exec_cb: lv_anim_custom_exec_cb_t) -> Self {
         unsafe { lv_anim_set_custom_exec_cb(self.0.as_ptr(), exec_cb) };
+        self
     }
 
-    pub fn set_path_cb(&self, path_cb: lv_anim_path_cb_t) {
+    pub fn set_path_cb(self, path_cb: lv_anim_path_cb_t) -> Self {
         unsafe { lv_anim_set_path_cb(self.0.as_ptr(), path_cb) };
+        self
     }
 
-    pub fn set_start_cb(&self, start_cb: lv_anim_start_cb_t) {
+    pub fn set_start_cb(self, start_cb: lv_anim_start_cb_t) -> Self {
         unsafe { lv_anim_set_start_cb(self.0.as_ptr(), start_cb) };
+        self
     }
 
-    pub fn set_get_value_cb(&self, get_value_cb: lv_anim_get_value_cb_t) {
+    pub fn set_get_value_cb(self, get_value_cb: lv_anim_get_value_cb_t) -> Self {
         unsafe { lv_anim_set_get_value_cb(self.0.as_ptr(), get_value_cb) };
+        self
     }
 
-    // pub fn set_completed_cb(&self, completed_cb: lv_anim_completed_cb_t) {
-    //     unsafe { lv_anim_set_completed_cb(self.0.as_ptr(), completed_cb) };
-    // }
+    #[deprecated]
+    fn set_completed_cb(self, completed_cb: lv_anim_completed_cb_t) -> Self {
+        unsafe { lv_anim_set_completed_cb(self.0.as_ptr(), completed_cb) };
+        self
+    }
 
-    pub fn set_deleted_cb(&self, deleted_cb: lv_anim_deleted_cb_t) {
+    pub fn set_deleted_cb(self, deleted_cb: lv_anim_deleted_cb_t) -> Self {
         unsafe { lv_anim_set_deleted_cb(self.0.as_ptr(), deleted_cb) };
+        self
     }
 
-    pub fn set_playback_duration(&self, duration: u32) {
+    pub fn set_playback_duration(self, duration: u32) -> Self {
         unsafe { lv_anim_set_playback_duration(self.0.as_ptr(), duration) };
+        self
     }
 
-    pub fn set_playback_delay(&self, delay: u32) {
+    pub fn set_playback_delay(self, delay: u32) -> Self {
         unsafe { lv_anim_set_playback_delay(self.0.as_ptr(), delay) };
+        self
     }
 
-    pub fn set_repeat_count(&self, cnt: u16) {
+    pub fn set_repeat_count(self, cnt: u16) -> Self {
         unsafe { lv_anim_set_repeat_count(self.0.as_ptr(), cnt) };
+        self
     }
 
-    pub fn set_repeat_delay(&self, delay: u32) {
+    pub fn set_repeat_delay(self, delay: u32) -> Self {
         unsafe { lv_anim_set_repeat_delay(self.0.as_ptr(), delay) };
+        self
     }
 
-    pub fn set_early_apply(&self, en: bool) {
+    pub fn set_early_apply(self, en: bool) -> Self {
         unsafe { lv_anim_set_early_apply(self.0.as_ptr(), en) };
+        self
     }
 }
 

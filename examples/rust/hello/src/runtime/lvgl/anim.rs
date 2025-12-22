@@ -119,8 +119,9 @@ impl<'a> LvAnim<'a> {
         }
     }
 
-    pub fn set_options(&mut self, options: Options) {
+    pub fn set_options(mut self, options: Options) -> Self {
         self.options = options;
+        self
     }
 
     pub fn set_cancel(self: Pin<&mut Self>, token: CancellationToken) {

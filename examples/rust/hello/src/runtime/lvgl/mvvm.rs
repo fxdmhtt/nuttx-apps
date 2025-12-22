@@ -1,22 +1,4 @@
 #[macro_export]
-macro_rules! clone {
-    ( $( $var:ident ),* ) => {
-        $(
-            let $var = $var.clone();
-        )*
-    };
-}
-
-#[macro_export]
-macro_rules! downgrade {
-    ( $( $var:ident ),* ) => {
-        $(
-            let $var = std::rc::Rc::downgrade(&$var);
-        )*
-    };
-}
-
-#[macro_export]
 macro_rules! BindingText {
     ($obj:expr, $body:block) => {
         reactive_cache::effect!(|| {

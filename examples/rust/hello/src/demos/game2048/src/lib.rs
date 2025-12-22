@@ -132,12 +132,15 @@ impl Game2048 {
     fn is_all_distinct(&self) -> bool {
         let cols = self.m.cols;
 
-        for row in 1..4 {
+        for row in 0..4 {
             for col in 1..4 {
                 if cols[col][row] == cols[col - 1][row] {
                     return false;
                 }
-
+            }
+        }
+        for col in 0..4 {
+            for row in 1..4 {
                 if cols[col][row] == cols[col][row - 1] {
                     return false;
                 }
