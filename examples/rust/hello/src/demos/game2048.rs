@@ -56,13 +56,13 @@ impl Drop for ViewModel {
 
         #[cfg(debug_assertions)]
         {
-            assert_eq!(Rc::strong_count(&self.tasks), 1);
-            assert_eq!(Rc::strong_count(&self.state), 1);
+            debug_assert_eq!(Rc::strong_count(&self.tasks), 1);
+            debug_assert_eq!(Rc::strong_count(&self.state), 1);
             self.effects
                 .iter()
                 .map(Rc::strong_count)
-                .for_each(|c| assert_eq!(c, 1));
-            assert_eq!(Rc::strong_count(&self.game), 1);
+                .for_each(|c| debug_assert_eq!(c, 1));
+            debug_assert_eq!(Rc::strong_count(&self.game), 1);
         }
     }
 }
@@ -349,7 +349,7 @@ unsafe fn search_num(parent: *mut lv_obj_t, x: i32, y: i32) -> *mut lv_obj_t {
         .filter(|o| lv_obj_get_x(*o) == x && lv_obj_get_y(*o) == y)
         .collect::<Vec<_>>();
 
-    assert_eq!(objs.len(), 1);
+    debug_assert_eq!(objs.len(), 1);
     objs[0]
 }
 
@@ -401,5 +401,5 @@ extern "C" fn game2048_drop(vm: *const RefCell<ViewModel>) {
 
     let weak_vm = Rc::downgrade(&vm);
     drop(vm);
-    assert!(weak_vm.upgrade().is_none());
+    debug_assert!(weak_vm.upgrade().is_none());
 }

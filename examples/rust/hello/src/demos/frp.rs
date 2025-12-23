@@ -93,16 +93,16 @@ impl Drop for ViewModel {
     fn drop(&mut self) {
         #[cfg(debug_assertions)]
         {
-            assert_eq!(Rc::strong_count(&self.active_index), 1);
-            assert_eq!(Rc::strong_count(&self.intense), 1);
-            assert_eq!(Rc::strong_count(&self.recolor_animation), 1);
-            assert_eq!(Rc::strong_count(&self.list_item_count), 1);
-            assert_eq!(Rc::strong_count(&self.state), 1);
+            debug_assert_eq!(Rc::strong_count(&self.active_index), 1);
+            debug_assert_eq!(Rc::strong_count(&self.intense), 1);
+            debug_assert_eq!(Rc::strong_count(&self.recolor_animation), 1);
+            debug_assert_eq!(Rc::strong_count(&self.list_item_count), 1);
+            debug_assert_eq!(Rc::strong_count(&self.state), 1);
             self.effects
                 .borrow()
                 .iter()
                 .map(Rc::strong_count)
-                .for_each(|c| assert_eq!(c, 1));
+                .for_each(|c| debug_assert_eq!(c, 1));
         }
     }
 }
@@ -210,7 +210,7 @@ event_decl!(switch_color_event, {
 
 fn cts_cancel_and_renew(cts: &RefCell<CancellationTokenSource>) {
     let old = cts.replace(CancellationTokenSource::new());
-    assert!(!old.is_cancelled());
+    debug_assert!(!old.is_cancelled());
     old.cancel();
     unsafe { rust_executor_wake() }; // necessary!
 }
@@ -345,12 +345,12 @@ extern "C" fn frp_demo_rs_drop() {
 
     drop(unsafe { &mut VM }.take().unwrap());
 
-    assert!(weak_active_index.upgrade().is_none());
-    assert!(weak_intense.upgrade().is_none());
-    assert!(weak_recolor_animation.upgrade().is_none());
-    assert!(weak_list_item_count.upgrade().is_none());
-    assert!(weak_state.upgrade().is_none());
-    assert!(weak_effects.iter().all(|w| w.upgrade().is_none()));
+    debug_assert!(weak_active_index.upgrade().is_none());
+    debug_assert!(weak_intense.upgrade().is_none());
+    debug_assert!(weak_recolor_animation.upgrade().is_none());
+    debug_assert!(weak_list_item_count.upgrade().is_none());
+    debug_assert!(weak_state.upgrade().is_none());
+    debug_assert!(weak_effects.iter().all(|w| w.upgrade().is_none()));
 }
 
 #[no_mangle]
@@ -501,28 +501,28 @@ extern "C" fn frp_demo_rs_init() {
                 .map(|c| cstr!("Recolor to {c:?}"))
                 .unwrap_or(cstr!("Non Recolor!"));
             let lbl = LvObj::from(unsafe { create_list_item(list, text.as_ptr()) });
-            assert_eq!(unsafe { lv_obj_get_event_count(lbl.try_get().unwrap()) }, 2);
+            debug_assert_eq!(unsafe { lv_obj_get_event_count(lbl.try_get().unwrap()) }, 2);
 
             // Test for event::add / event::remove
             {
                 let item = lbl.clone();
                 let evt1 = event::add(&lbl, LV_EVENT_SHORT_CLICKED, move |e| {
                     let obj = unsafe { lv_event_get_target(e) };
-                    assert_eq!(obj, item.try_get().unwrap());
+                    debug_assert_eq!(obj, item.try_get().unwrap());
                     let text = unsafe { CStr::from_ptr(lv_label_get_text(obj)) };
                     println!("{text:?} Clicked!");
                 });
                 let evt2 = event::add(&lbl, LV_EVENT_SHORT_CLICKED, |_| {});
 
                 if let Ok(lbl) = lbl.try_get() {
-                    assert_eq!(unsafe { lv_obj_get_event_count(lbl) }, 4);
-                    assert_eq!(unsafe { lv_obj_get_event_dsc(lbl, 2) }, evt1);
-                    assert_eq!(unsafe { lv_obj_get_event_dsc(lbl, 3) }, evt2);
-                    assert!(std::ptr::fn_addr_eq(
+                    debug_assert_eq!(unsafe { lv_obj_get_event_count(lbl) }, 4);
+                    debug_assert_eq!(unsafe { lv_obj_get_event_dsc(lbl, 2) }, evt1);
+                    debug_assert_eq!(unsafe { lv_obj_get_event_dsc(lbl, 3) }, evt2);
+                    debug_assert!(std::ptr::fn_addr_eq(
                         unsafe { lv_event_dsc_get_cb(lv_obj_get_event_dsc(lbl, 2)) },
                         unsafe { lv_event_dsc_get_cb(lv_obj_get_event_dsc(lbl, 3)) }
                     ));
-                    assert!(std::ptr::fn_addr_eq(
+                    debug_assert!(std::ptr::fn_addr_eq(
                         unsafe { lv_event_dsc_get_cb(lv_obj_get_event_dsc(lbl, 0)) },
                         unsafe { lv_event_dsc_get_cb(lv_obj_get_event_dsc(lbl, 2)) }
                     ));
@@ -553,7 +553,7 @@ extern "C" fn frp_demo_rs_init() {
             match *vm().unwrap().list_item_count.get() {
                 0 => {
                     let mut hint = vm().unwrap().hint.borrow_mut();
-                    assert!(hint.try_get().is_err());
+                    debug_assert!(hint.try_get().is_err());
                     *hint = LvObj::from(unsafe { create_list_hint() });
                 }
                 _ => {

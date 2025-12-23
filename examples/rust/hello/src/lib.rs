@@ -1,3 +1,4 @@
+#![feature(assert_matches)]
 #![feature(macro_metavar_expr_concat)]
 
 mod binding;

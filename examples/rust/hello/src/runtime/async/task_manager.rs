@@ -15,7 +15,7 @@ impl Drop for TaskManager {
     fn drop(&mut self) {
         #[cfg(debug_assertions)]
         {
-            assert_eq!(Rc::strong_count(&self.tasks), 1);
+            debug_assert_eq!(Rc::strong_count(&self.tasks), 1);
         }
     }
 }

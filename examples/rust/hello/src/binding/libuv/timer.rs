@@ -41,14 +41,14 @@ impl Drop for UvTimer {
 
 impl UvTimer {
     pub fn new(ui_loop: &NonNull<uv_loop_t>) -> Self {
-        // assert_eq!(std::mem::size_of::<uv_timer_t>(), unsafe { uv_timer_size });
-        // assert_eq!(std::mem::align_of::<uv_timer_t>(), unsafe { uv_timer_align });
+        // debug_assert_eq!(std::mem::size_of::<uv_timer_t>(), unsafe { uv_timer_size });
+        // debug_assert_eq!(std::mem::align_of::<uv_timer_t>(), unsafe { uv_timer_align });
 
         Self(NonNull::new(unsafe { uv_timer_new(ui_loop.as_ptr()) }).unwrap())
     }
 
     pub fn start(&self, timeout: u64, state: *mut c_void) {
-        assert!(!state.is_null());
+        debug_assert!(!state.is_null());
         unsafe { uv_timer_pending(self.0.as_ptr(), timeout, state) }
     }
 

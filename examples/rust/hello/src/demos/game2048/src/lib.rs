@@ -123,7 +123,7 @@ impl Game2048 {
 
         let Coord { row, col } = self.random_select_space(&mut rng)?;
         let x = ((rng.random_bool(0.5) as i32 as f32 + 1.0) * 2.0).round();
-        assert!(x == 2.0 || x == 4.0);
+        debug_assert!(x == 2.0 || x == 4.0);
 
         self.m[col][row] = x;
         Ok((x as usize, Coord { row, col }))

@@ -17,7 +17,7 @@ impl LvAnim {
     }
 
     pub fn start(&self, var: &NonNull<c_void>, exec_cb: lv_anim_exec_xcb_t, duration: u32, start: i32, end: i32, state: *mut c_void) {
-        assert!(!state.is_null());
+        debug_assert!(!state.is_null());
 
         unsafe { lv_anim_set_var(self.0.as_ptr(), var.as_ptr()) };
         unsafe { lv_anim_set_exec_cb(self.0.as_ptr(), exec_cb) };
@@ -31,7 +31,8 @@ impl LvAnim {
     }
 
     pub fn cancel(&self) {
-        unsafe { assert!(lv_anim_cancel(self.0.as_ptr())) }
+        let ret = unsafe { lv_anim_cancel(self.0.as_ptr()) };
+        debug_assert!(ret);
     }
 
     pub fn set_delay(self, delay: u32) -> Self {

@@ -1,4 +1,5 @@
 use std::{
+    assert_matches::{assert_matches, debug_assert_matches},
     cell::RefCell,
     ffi::c_void,
     future::Future,
@@ -38,7 +39,7 @@ impl Drop for State {
     fn drop(&mut self) {
         #[cfg(debug_assertions)]
         {
-            assert_eq!(Rc::strong_count(&self.handle), 1);
+            debug_assert_eq!(Rc::strong_count(&self.handle), 1);
         }
     }
 }
@@ -54,7 +55,7 @@ enum PollState {
 #[derive(Debug, Default)]
 pub struct Options {}
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 enum Extra {
     #[default]
     Plain,
@@ -70,7 +71,7 @@ impl Future for LvAnim<'_> {
 
         if let Extra::Cancellable(fut, _reg) = this.extra {
             if let Poll::Ready(()) = Pin::new(fut).poll(cx) {
-                assert!(matches!(s.state, PollState::Pending | PollState::Cancelled));
+                debug_assert_matches!(s.state, PollState::Pending | PollState::Cancelled);
                 s.state = PollState::Cancelled;
                 return Poll::Ready(Err(Cancelled));
             }
@@ -128,8 +129,9 @@ impl<'a> LvAnim<'a> {
         let this = self.project();
         let s = this.state.get_mut();
 
-        assert!(
-            !matches!(this.extra, Extra::Cancellable(_, _)),
+        assert_matches!(
+            this.extra,
+            Extra::Plain,
             "LvAnim can only be canceled once."
         );
 
@@ -156,7 +158,7 @@ extern "C" fn rust_anim_wake(state: *mut c_void) {
     assert!(!state.is_null());
     let s = unsafe { &mut *(state as *mut State) };
 
-    assert!(matches!(s.state, PollState::Pending));
+    assert_matches!(s.state, PollState::Pending);
 
     s.state = PollState::Completed;
     if let Some(waker) = s.waker.take() {

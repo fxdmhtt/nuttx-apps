@@ -1,4 +1,5 @@
 use std::{
+    assert_matches::{assert_matches, debug_assert_matches},
     ffi::c_void,
     future::Future,
     pin::Pin,
@@ -41,7 +42,7 @@ enum PollState {
     Cancelled,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 enum Extra {
     #[default]
     Plain,
@@ -76,7 +77,7 @@ impl Future for Delay {
         // automatically when it goes out of scope.
         if let Extra::Cancellable(fut, _reg) = this.extra {
             if let Poll::Ready(()) = Pin::new(fut).poll(cx) {
-                assert!(matches!(s.state, PollState::Pending | PollState::Cancelled));
+                debug_assert_matches!(s.state, PollState::Pending | PollState::Cancelled);
                 s.state = PollState::Cancelled;
                 return Poll::Ready(Err(Cancelled));
             }
@@ -139,10 +140,7 @@ impl Delay {
         let this = self.project();
         let s = this.state.get_mut();
 
-        assert!(
-            !matches!(this.extra, Extra::Cancellable(_, _)),
-            "Delay can only be canceled once."
-        );
+        assert_matches!(this.extra, Extra::Plain, "Delay can only be canceled once.");
 
         // Register a cancellation callback with the token.
         //
@@ -194,7 +192,7 @@ extern "C" fn rust_delay_wake(state: *mut c_void) {
     // Safety:
     // - `state` must point to a valid State inside a pinned Delay.
     // - This is guaranteed by Delay being alive and pinned for the lifetime of uv_timer.
-    assert!(matches!(s.state, PollState::Pending));
+    assert_matches!(s.state, PollState::Pending);
 
     // Signal that the timer has completed and wake up the last
     // task on which the future was polled, if one exists.

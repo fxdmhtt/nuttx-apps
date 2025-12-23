@@ -134,9 +134,9 @@ impl TryFrom<*mut lv_obj_t> for LvObjHandle {
         #[cfg(debug_assertions)]
         {
             let evt = event::add(&obj, LV_EVENT_DELETE, move |e| {
-                assert_eq!(value, unsafe { lv_event_get_target(e) });
+                debug_assert_eq!(value, unsafe { lv_event_get_target(e) });
                 if let Some(obj) = unsafe { LVOBJ_TABLE.remove(&lv_event_get_target(e)) } {
-                    assert_eq!(Rc::strong_count(&obj), 1);
+                    debug_assert_eq!(Rc::strong_count(&obj), 1);
                 } else {
                     panic!();
                 }
@@ -144,9 +144,9 @@ impl TryFrom<*mut lv_obj_t> for LvObjHandle {
 
             let obj = obj.try_get().unwrap();
             let cnt = unsafe { lv_obj_get_event_count(obj) };
-            assert!(cnt >= 2);
-            assert_eq!(unsafe { lv_obj_get_event_dsc(obj, cnt - 2) }, evt);
-            assert_eq!(
+            debug_assert!(cnt >= 2);
+            debug_assert_eq!(unsafe { lv_obj_get_event_dsc(obj, cnt - 2) }, evt);
+            debug_assert_eq!(
                 unsafe { lv_event_dsc_get_user_data(lv_obj_get_event_dsc(obj, cnt - 1)) },
                 std::ptr::null_mut()
             );
