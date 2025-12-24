@@ -41,6 +41,8 @@ pub type lv_grad_dsc_t = c_void;
 pub type lv_indev_t = c_void;
 pub type lv_image_colorkey_t = c_void;
 pub type lv_image_dsc_t = c_void;
+pub type lv_imgfont_get_path_cb_t =
+    unsafe extern "C" fn(font: *const lv_font_t, unicode: u32, unicode_next: u32, offset_y: *mut i32, user_data: *mut c_void) -> *const c_void;
 pub type lv_layout_t = u32;
 pub type lv_obj_t = c_void;
 pub type lv_obj_flag_t = u32;
@@ -379,6 +381,8 @@ extern "C" {
     pub fn lv_indev_active() -> *mut lv_indev_t;
     pub fn lv_indev_get_gesture_dir(indev: *const lv_indev_t) -> lv_dir_t;
     pub fn lv_indev_get_key(indev: *const lv_indev_t) -> u32;
+    pub fn lv_imgfont_create(height: u16, path_cb: lv_imgfont_get_path_cb_t, user_data: *mut c_void) -> *mut lv_font_t;
+    pub fn lv_imgfont_destroy(font: *mut lv_font_t);
     pub fn lv_image_create(parent: *mut lv_obj_t) -> *mut lv_obj_t;
     pub fn lv_image_set_src(obj: *mut lv_obj_t, src: *const c_void);
     pub fn lv_label_create(parent: *mut lv_obj_t) -> *mut lv_obj_t;

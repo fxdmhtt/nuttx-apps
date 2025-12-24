@@ -1,6 +1,13 @@
 #![allow(static_mut_refs)]
 
-use std::{cell::RefCell, rc::Rc, time::Duration, vec};
+use std::{
+    cell::RefCell,
+    ffi::c_void,
+    ptr::{null_mut, NonNull},
+    rc::Rc,
+    time::Duration,
+    vec,
+};
 
 use futures::future::join_all;
 use game2048::*;
@@ -32,7 +39,6 @@ enum State {
     GameOver,
 }
 
-#[derive(Default)]
 struct ViewModel {
     tasks: Rc<TaskManager>,
 
@@ -45,14 +51,18 @@ struct ViewModel {
     // It is recommended to only store a reference to the root of the visual tree,
     // and all references to `lv_obj_t *` must be encapsulated within `LvObjHandle`
     // to prevent dangling references.
-    ui_tree_root: RefCell<LvObjHandle>,
+    _ui_tree_root: RefCell<LvObjHandle>,
+
+    _lv_imgfont: NonNull<lv_font_t>,
 }
 
 impl Drop for ViewModel {
     fn drop(&mut self) {
-        if let Ok(root) = self.ui_tree_root.borrow().try_get() {
+        if let Ok(root) = self._ui_tree_root.borrow().try_get() {
             unsafe { lv_obj_delete(root) };
         }
+
+        unsafe { lv_imgfont_destroy(self._lv_imgfont.as_ptr()) };
 
         #[cfg(debug_assertions)]
         {
@@ -78,16 +88,18 @@ impl ViewModel {
 
             game: Default::default(),
 
-            ui_tree_root: Default::default(),
+            _ui_tree_root: Default::default(),
+
+            _lv_imgfont: NonNull::new(unsafe { lv_imgfont_create(36, get_imgfont_path, null_mut()) }).unwrap(),
         }
     }
 
     fn root_changed(&self, root: LvObjHandle) {
-        if let Ok(root) = self.ui_tree_root.borrow().try_get() {
+        if let Ok(root) = self._ui_tree_root.borrow().try_get() {
             unsafe { lv_obj_delete_async(root) };
         }
 
-        *self.ui_tree_root.borrow_mut() = root;
+        *self._ui_tree_root.borrow_mut() = root;
     }
 
     unsafe fn show_clicktostart(&self, parent: *mut lv_obj_t) {
@@ -257,46 +269,17 @@ impl ViewModel {
         lv_obj_align(retry, LV_ALIGN_BOTTOM_MID, 0, -16);
         lv_obj_add_flag(retry, LV_OBJ_FLAG_CLICKABLE);
 
-        {
-            let fenshu_cont = lv_image_create(bg_img);
-            lv_obj_align(fenshu_cont, LV_ALIGN_TOP_MID, 0, 192);
-            lv_obj_set_flex_flow(fenshu_cont, LV_FLEX_FLOW_ROW);
-            lv_obj_set_flex_align(
-                fenshu_cont,
-                LV_FLEX_ALIGN_START,
-                LV_FLEX_ALIGN_CENTER,
-                LV_FLEX_ALIGN_START,
-            );
-            lv_obj_set_style_pad_column(fenshu_cont, 0, LV_PART_MAIN);
-            let fenshu = lv_image_create(fenshu_cont);
-            lv_image_set_src(fenshu, cstr!("A:/game2048/fenshu.png").as_ptr() as _);
-            let maohao = lv_image_create(fenshu_cont);
-            lv_image_set_src(maohao, cstr!("A:/game2048/maohaobig.png").as_ptr() as _);
-            let score = self.game.borrow().get_score();
-            create_imgs_from_nums(fenshu_cont, score);
-        }
+        let score = self.game.borrow().get_score();
 
-        {
-            let fenshu_max_cont = lv_image_create(bg_img);
-            lv_obj_align(fenshu_max_cont, LV_ALIGN_TOP_MID, 0, 253);
-            lv_obj_set_flex_flow(fenshu_max_cont, LV_FLEX_FLOW_ROW);
-            lv_obj_set_flex_align(
-                fenshu_max_cont,
-                LV_FLEX_ALIGN_START,
-                LV_FLEX_ALIGN_CENTER,
-                LV_FLEX_ALIGN_START,
-            );
-            lv_obj_set_style_pad_column(fenshu_max_cont, 0, LV_PART_MAIN);
-            let fenshu_max = lv_image_create(fenshu_max_cont);
-            lv_image_set_src(
-                fenshu_max,
-                cstr!("A:/game2048/zuigaofenshu.png").as_ptr() as _,
-            );
-            let maohao = lv_image_create(fenshu_max_cont);
-            lv_image_set_src(maohao, cstr!("A:/game2048/maohaobig.png").as_ptr() as _);
-            let score = self.game.borrow().get_score();
-            create_imgs_from_nums(fenshu_max_cont, score);
-        }
+        let fenshu = lv_label_create(parent);
+        lv_label_set_text(fenshu, cstr!("\u{E000}:{score}").as_ptr());
+        lv_obj_set_style_text_font(fenshu, self._lv_imgfont.as_ptr(), LV_PART_MAIN);
+        lv_obj_align(fenshu, LV_ALIGN_TOP_MID, 0, 192);
+
+        let fenshu_max = lv_label_create(parent);
+        lv_label_set_text(fenshu_max, cstr!("\u{E001}:{score}").as_ptr());
+        lv_obj_set_style_text_font(fenshu_max, self._lv_imgfont.as_ptr(), LV_PART_MAIN);
+        lv_obj_align(fenshu_max, LV_ALIGN_TOP_MID, 0, 253);
 
         let retry = LvObj::from(retry);
         {
@@ -308,39 +291,6 @@ impl ViewModel {
 
         self.root_changed(LvObj::from(bg_img));
     }
-}
-
-unsafe fn create_imgs_from_nums(parent: *mut lv_obj_t, num: usize) -> *mut lv_obj_t {
-    let cont = lv_image_create(parent);
-    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(
-        cont,
-        LV_FLEX_ALIGN_START,
-        LV_FLEX_ALIGN_END,
-        LV_FLEX_ALIGN_START,
-    );
-    lv_obj_set_style_pad_column(cont, 0, LV_PART_MAIN);
-
-    let mut score = num;
-    std::iter::from_fn(move || {
-        if score == 0 {
-            None
-        } else {
-            let d = score % 10;
-            score /= 10;
-            Some(d)
-        }
-    })
-    .collect::<Vec<_>>()
-    .iter()
-    .rev()
-    .for_each(|n| {
-        let obj = lv_image_create(cont);
-        lv_image_set_src(obj, cstr!("A:/game2048/big{n}.png").as_ptr() as _);
-        lv_obj_set_style_width(obj, 20, LV_PART_MAIN);
-    });
-
-    cont
 }
 
 unsafe fn search_num(parent: *mut lv_obj_t, x: i32, y: i32) -> *mut lv_obj_t {
@@ -368,6 +318,31 @@ fn random_fill(game: &Rc<RefCell<Game2048>>, parent: &LvObjHandle) {
 
     let (x, y) = NUM_COORDS[p.row][p.col];
     unsafe { lv_obj_set_pos(num, x, y) };
+}
+
+unsafe extern "C" fn get_imgfont_path(
+    _font: *const lv_font_t,
+    unicode: u32,
+    _unicode_next: u32,
+    _offset_y: *mut i32,
+    _user_data: *mut c_void,
+) -> *const c_void {
+    match unicode {
+        0x0030 => c"A:/game2048/big0.png".as_ptr() as _,
+        0x0031 => c"A:/game2048/big1.png".as_ptr() as _,
+        0x0032 => c"A:/game2048/big2.png".as_ptr() as _,
+        0x0033 => c"A:/game2048/big3.png".as_ptr() as _,
+        0x0034 => c"A:/game2048/big4.png".as_ptr() as _,
+        0x0035 => c"A:/game2048/big5.png".as_ptr() as _,
+        0x0036 => c"A:/game2048/big6.png".as_ptr() as _,
+        0x0037 => c"A:/game2048/big7.png".as_ptr() as _,
+        0x0038 => c"A:/game2048/big8.png".as_ptr() as _,
+        0x0039 => c"A:/game2048/big9.png".as_ptr() as _,
+        0x003A => c"A:/game2048/maohaobig.png".as_ptr() as _,
+        0xE000 => c"A:/game2048/fenshu.png".as_ptr() as _,
+        0xE001 => c"A:/game2048/zuigaofenshu.png".as_ptr() as _,
+        _ => null_mut(),
+    }
 }
 
 #[no_mangle]
