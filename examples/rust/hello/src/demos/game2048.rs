@@ -19,6 +19,24 @@ use crate::{
     *,
 };
 
+macro_rules! SCORE_LABEL_TEXT {
+    (u) => {
+        "\u{E000}"
+    };
+    (x) => {
+        0xE000
+    };
+}
+
+macro_rules! SCORE_MAX_LABEL_TEXT {
+    (u) => {
+        "\u{E001}"
+    };
+    (x) => {
+        0xE001
+    };
+}
+
 extern "C" {
     pub static lv_font_montserrat_24: lv_font_t;
 }
@@ -39,26 +57,37 @@ enum State {
     GameOver,
 }
 
+#[allow(dead_code)]
+#[derive(Default)]
+struct Page {
+    // It is recommended not to store or only store references to the root node
+    // of the visual tree, and all references to `lv_obj_t *` must be wrapped in
+    // `LvObjHandle` to prevent dangling references.
+    root: LvObjHandle,
+
+    // It holds ownership of the `Effect`s on the activity page
+    // and replaces them when the activity page changes,
+    // thus avoiding unnecessary effects.
+    effects: Vec<Rc<Effect>>,
+}
+
 struct ViewModel {
     tasks: Rc<TaskManager>,
 
     state: Rc<Signal<State>>,
 
-    effects: Vec<Rc<Effect>>,
+    effects: RefCell<Vec<Rc<Effect>>>,
+
+    active_page: RefCell<Page>,
 
     game: Rc<RefCell<Game2048>>,
-
-    // It is recommended to only store a reference to the root of the visual tree,
-    // and all references to `lv_obj_t *` must be encapsulated within `LvObjHandle`
-    // to prevent dangling references.
-    _ui_tree_root: RefCell<LvObjHandle>,
 
     _lv_imgfont: NonNull<lv_font_t>,
 }
 
 impl Drop for ViewModel {
     fn drop(&mut self) {
-        if let Ok(root) = self._ui_tree_root.borrow().try_get() {
+        if let Ok(root) = self.active_page.borrow().root.try_get() {
             unsafe { lv_obj_delete(root) };
         }
 
@@ -69,6 +98,7 @@ impl Drop for ViewModel {
             debug_assert_eq!(Rc::strong_count(&self.tasks), 1);
             debug_assert_eq!(Rc::strong_count(&self.state), 1);
             self.effects
+                .borrow()
                 .iter()
                 .map(Rc::strong_count)
                 .for_each(|c| debug_assert_eq!(c, 1));
@@ -86,23 +116,27 @@ impl ViewModel {
 
             effects: Default::default(),
 
-            game: Default::default(),
+            active_page: Default::default(),
 
-            _ui_tree_root: Default::default(),
+            game: Default::default(),
 
             _lv_imgfont: NonNull::new(unsafe { lv_imgfont_create(36, get_imgfont_path, null_mut()) }).unwrap(),
         }
     }
 
-    fn root_changed(&self, root: LvObjHandle) {
-        if let Ok(root) = self._ui_tree_root.borrow().try_get() {
+    fn page_changed(&self, new_page: Page) {
+        let mut active_page = self.active_page.borrow_mut();
+
+        if let Ok(root) = active_page.root.try_get() {
             unsafe { lv_obj_delete_async(root) };
         }
 
-        *self._ui_tree_root.borrow_mut() = root;
+        *active_page = new_page;
     }
 
     unsafe fn show_clicktostart(&self, parent: *mut lv_obj_t) {
+        println!("[{}] {}", here!(), callee!());
+
         let bg_img = lv_image_create(parent);
         lv_image_set_src(bg_img, cstr!("A:/game2048/bg2048.png").as_ptr() as _);
         lv_obj_center(bg_img);
@@ -132,16 +166,18 @@ impl ViewModel {
 
         let start_btn = LvObj::from(start_btn);
         {
-            let state = self.state.clone();
+            clone!(self.state);
             event::add(&start_btn, LV_EVENT_SHORT_CLICKED, move |_| {
                 state.set(State::Playing);
             });
         }
 
-        self.root_changed(LvObj::from(bg_img));
+        self.page_changed(Page { root: LvObj::from(bg_img), effects: vec![] });
     }
 
     unsafe fn show_playing(&self, parent: *mut lv_obj_t) {
+        println!("[{}] {}", here!(), callee!());
+
         let bg_img = lv_image_create(parent);
         lv_image_set_src(bg_img, cstr!("A:/game2048/bg2048.png").as_ptr() as _);
         lv_obj_center(bg_img);
@@ -237,14 +273,14 @@ impl ViewModel {
                     if game.borrow().is_it_win() {
                         println!("{}", game.borrow());
                         println!("2048!");
-                        println!("游戏结束");
+                        println!("Game Over");
                         state.set(State::Win);
                     }
 
                     random_fill(&game, &bg_img);
 
                     if game.borrow().is_it_over() {
-                        println!("游戏结束");
+                        println!("Game Over");
                         state.set(State::GameOver);
                     }
                 });
@@ -252,10 +288,12 @@ impl ViewModel {
             });
         }
 
-        self.root_changed(bg_img);
+        self.page_changed(Page { root: bg_img, effects: vec![] });
     }
 
     unsafe fn show_gameover(&self, parent: *mut lv_obj_t) {
+        println!("[{}] {}", here!(), callee!());
+
         let bg_img = lv_image_create(parent);
         lv_image_set_src(bg_img, cstr!("A:/game2048/endbg.png").as_ptr() as _);
         lv_obj_center(bg_img);
@@ -272,24 +310,30 @@ impl ViewModel {
         let score = self.game.borrow().get_score();
 
         let fenshu = lv_label_create(parent);
-        lv_label_set_text(fenshu, cstr!("\u{E000}:{score}").as_ptr());
+        lv_label_set_text(
+            fenshu,
+            cstr!(concat!(SCORE_LABEL_TEXT!(u), ":{}"), score).as_ptr(),
+        );
         lv_obj_set_style_text_font(fenshu, self._lv_imgfont.as_ptr(), LV_PART_MAIN);
         lv_obj_align(fenshu, LV_ALIGN_TOP_MID, 0, 192);
 
         let fenshu_max = lv_label_create(parent);
-        lv_label_set_text(fenshu_max, cstr!("\u{E001}:{score}").as_ptr());
+        lv_label_set_text(
+            fenshu_max,
+            cstr!(concat!(SCORE_MAX_LABEL_TEXT!(u), ":{}"), score).as_ptr(),
+        );
         lv_obj_set_style_text_font(fenshu_max, self._lv_imgfont.as_ptr(), LV_PART_MAIN);
         lv_obj_align(fenshu_max, LV_ALIGN_TOP_MID, 0, 253);
 
         let retry = LvObj::from(retry);
         {
-            let state = self.state.clone();
+            clone!(self.state);
             event::add(&retry, LV_EVENT_SHORT_CLICKED, move |_| {
                 state.set(State::Playing);
             });
         }
 
-        self.root_changed(LvObj::from(bg_img));
+        self.page_changed(Page { root: LvObj::from(bg_img), effects: vec![] });
     }
 }
 
@@ -339,21 +383,20 @@ unsafe extern "C" fn get_imgfont_path(
         0x0038 => c"A:/game2048/big8.png".as_ptr() as _,
         0x0039 => c"A:/game2048/big9.png".as_ptr() as _,
         0x003A => c"A:/game2048/maohaobig.png".as_ptr() as _,
-        0xE000 => c"A:/game2048/fenshu.png".as_ptr() as _,
-        0xE001 => c"A:/game2048/zuigaofenshu.png".as_ptr() as _,
+        SCORE_LABEL_TEXT!(x) => c"A:/game2048/fenshu.png".as_ptr() as _,
+        SCORE_MAX_LABEL_TEXT!(x) => c"A:/game2048/zuigaofenshu.png".as_ptr() as _,
         _ => null_mut(),
     }
 }
 
 #[no_mangle]
-extern "C" fn game2048_new() -> *const RefCell<ViewModel> {
-    let vm = Rc::new(RefCell::new(ViewModel::new()));
+extern "C" fn game2048_new() -> *const ViewModel {
+    let vm = Rc::new(ViewModel::new());
 
-    vm.borrow_mut().effects = vec![{
+    *vm.effects.borrow_mut() = vec![{
         downgrade!(vm);
         effect!(move || {
             if let Some(vm) = vm.upgrade() {
-                let vm = vm.borrow();
                 match *vm.state.get() {
                     State::ClickToStart => unsafe { vm.show_clicktostart(lv_screen_active()) },
                     State::Playing => {
@@ -362,7 +405,7 @@ extern "C" fn game2048_new() -> *const RefCell<ViewModel> {
                     }
                     State::Win => todo!(),
                     State::GameOver => unsafe { vm.show_gameover(lv_screen_active()) },
-                };
+                }
             }
         })
     }];
@@ -371,7 +414,7 @@ extern "C" fn game2048_new() -> *const RefCell<ViewModel> {
 }
 
 #[no_mangle]
-extern "C" fn game2048_drop(vm: *const RefCell<ViewModel>) {
+extern "C" fn game2048_drop(vm: *const ViewModel) {
     let vm = unsafe { Rc::from_raw(vm) };
 
     let weak_vm = Rc::downgrade(&vm);

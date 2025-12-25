@@ -1,4 +1,5 @@
 pub mod r#async;
+pub mod diag;
 pub mod lvgl;
 
 pub use r#async::*;

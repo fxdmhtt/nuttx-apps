@@ -228,6 +228,13 @@ impl TryFrom<&LvObjHandle> for *mut lv_obj_t {
 }
 
 impl LvObjHandle {
+    /// Try to get the underlying `Rc<LvObj>`.
+    ///
+    /// Returns `Err(LVGLError::Deleted)` if the object has been deleted.
+    pub fn upgrade(&self) -> Result<Rc<LvObj>, LVGLError> {
+        self.try_into()
+    }
+
     /// Try to get the underlying `lv_obj_t *`.
     ///
     /// Returns `Err(LVGLError::Deleted)` if the object has been deleted.
