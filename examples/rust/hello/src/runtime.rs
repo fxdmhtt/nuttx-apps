@@ -42,7 +42,6 @@ macro_rules! clone {
             let $var = $var.clone();
         )*
     };
-
     ( $( $self:ident . $field:ident ),* $(,)? ) => {
         $(
             let $field = $self.$field.clone();
@@ -55,6 +54,11 @@ macro_rules! downgrade {
     ( $( $var:ident ),* $(,)? ) => {
         $(
             let $var = std::rc::Rc::downgrade(&$var);
+        )*
+    };
+    ( $( $self:ident . $field:ident ),* $(,)? ) => {
+        $(
+            let $field = std::rc::Rc::downgrade(&$self.$field);
         )*
     };
 }

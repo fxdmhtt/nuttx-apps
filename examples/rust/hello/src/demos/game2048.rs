@@ -1,7 +1,7 @@
 #![allow(static_mut_refs)]
 
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     ffi::c_void,
     ptr::{null_mut, NonNull},
     rc::Rc,
@@ -11,7 +11,7 @@ use std::{
 
 use futures::future::join_all;
 use game2048::*;
-use reactive_cache::{effect, Effect, Signal};
+use reactive_cache::{effect, prelude::*};
 use stack_cstr::cstr;
 
 use crate::{
@@ -37,8 +37,9 @@ macro_rules! SCORE_MAX_LABEL_TEXT {
     };
 }
 
+// Referencing the built-in font `LVGL` in the C language
 extern "C" {
-    pub static lv_font_montserrat_24: lv_font_t;
+    static lv_font_montserrat_24: lv_font_t;
 }
 
 const NUM_COORDS: [[(i32, i32); 4]; 4] = [
@@ -48,6 +49,7 @@ const NUM_COORDS: [[(i32, i32); 4]; 4] = [
     [(20, 330), (104, 330), (188, 330), (272, 330)],
 ];
 
+// The application's state machine
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq)]
 enum State {
     #[default]
@@ -57,42 +59,121 @@ enum State {
     GameOver,
 }
 
+// The ownership of the active page changes as the page is switched.
 #[allow(dead_code)]
-#[derive(Default)]
 struct Page {
-    // It is recommended not to store or only store references to the root node
-    // of the visual tree, and all references to `lv_obj_t *` must be wrapped in
-    // `LvObjHandle` to prevent dangling references.
+    // It is recommended to store only a reference to the root node
+    // of the visualization tree, and all references to `lv_obj_t *`
+    // must be encapsulated within `LvObjHandle` to prevent dangling references.
     root: LvObjHandle,
 
+    // Define all `Effect`s related to the current page's side effects.
+    //
     // It holds ownership of the `Effect`s on the activity page
     // and replaces them when the activity page changes,
     // thus avoiding unnecessary effects.
     effects: Vec<Rc<Effect>>,
 }
 
+impl Drop for Page {
+    fn drop(&mut self) {
+        match self.root.try_get() {
+            // A typical scenario is that a button triggers a page switch,
+            // which causes the current page containing the button to be dropped.
+            // In this case, `lv_obj_delete` will cause an exception;
+            // therefore, `lv_obj_delete_async` must be used to delete the page.
+            //
+            // Refer: https://docs.lvgl.io/master/common-widget-features/api.html#widget-deletion
+            Ok(root) => unsafe { lv_obj_delete_async(root) },
+            Err(_) => unreachable!(),
+        }
+    }
+}
+
 struct ViewModel {
+    // If asynchronous task support is required,
+    // all tasks must be attached to the `TaskManager`
+    // so that all asynchronous tasks can be terminated
+    // when the `ViewModel` is dropped,
+    // reducing the reliance on `CancellationTokenSource`.
     tasks: Rc<TaskManager>,
 
+    // Define all `Signal`s.
     state: Rc<Signal<State>>,
 
+    // Define all `Memo`s.
+
+    // Define all `Effect`s that are related to the `ViewModel`
+    // rather than the page itself.
     effects: RefCell<Vec<Rc<Effect>>>,
 
-    active_page: RefCell<Page>,
+    // Scenarios involving ownership transfer,
+    // complete replacement or removal,
+    // and where no borrowing occurs,
+    // are suitable for non-`Copy` `Cell<T>`
+    // rather than `RefCell<T>`.
+    active_page: Cell<Option<Page>>,
 
     game: Rc<RefCell<Game2048>>,
 
+    // Members that are only initialized
+    // during the creation of the `ViewModel`
+    // do not require `Cell<T>` or `RefCell<T>`
+    // to provide mutability.
     _lv_imgfont: NonNull<lv_font_t>,
 }
 
 impl Drop for ViewModel {
     fn drop(&mut self) {
-        if let Ok(root) = self.active_page.borrow().root.try_get() {
-            unsafe { lv_obj_delete(root) };
+        // The `imgfont` object is deleted immediately, but the `root` of the `Page`
+        // is deleted later in the `Drop` of the `Page`, which may cause a memory
+        // access error when referencing the font in the next rendering cycle.
+        //
+        // To avoid double freeing of memory during Page release, all UI objects under
+        // the Page's root must be deleted immediately when the ViewModel is dropped,
+        // but the Page's root node itself must be preserved for release by the `Drop`.
+        if let Some(page) = self.active_page.take() {
+            if let Ok(root) = page.root.try_get() {
+                unsafe { lv_obj_clean(root) };
+            }
         }
 
         unsafe { lv_imgfont_destroy(self._lv_imgfont.as_ptr()) };
 
+        // The assertion holds true, requiring:
+        //
+        // 1. All references to `ViewModel` members are `Weak` references.
+        // (current implementation)
+        //
+        // 2. The current page must be actively deleted to release all closures.
+        // ```
+        // self.active_page.take();
+        // ```
+        // However, this requires immediate deletion (`lv_obj_delete`)
+        // instead of asynchronous deletion (`lv_obj_delete_async`),
+        // so the `Drop` implementation of `Page` needs to be modified.
+        //
+        // 3. The current page must be deleted immediately to release all closures.
+        // ```
+        // if let Some(page) = self.active_page.take() {
+        //     if let Ok(root) = page.root.try_get() {
+        //         unsafe { lv_obj_delete(root) };
+        //     }
+        // }
+        // ```
+        // This also requires modifying the `Drop` implementation of `Page`,
+        // removing the `unreachable!()` assertion that prevents double freeing
+        // when the `Page` is released.
+        // 
+        // 4. All objects on the current page must be deleted immediately to release all closures.
+        // (current implementation)
+        // ```
+        // if let Some(page) = self.active_page.take() {
+        //     if let Ok(root) = page.root.try_get() {
+        //         unsafe { lv_obj_clean(root) };
+        //     }
+        // }
+        // ```
         #[cfg(debug_assertions)]
         {
             debug_assert_eq!(Rc::strong_count(&self.tasks), 1);
@@ -125,17 +206,11 @@ impl ViewModel {
     }
 
     fn page_changed(&self, new_page: Page) {
-        let mut active_page = self.active_page.borrow_mut();
-
-        if let Ok(root) = active_page.root.try_get() {
-            unsafe { lv_obj_delete_async(root) };
-        }
-
-        *active_page = new_page;
+        self.active_page.replace(Some(new_page));
     }
 
     unsafe fn show_clicktostart(&self, parent: *mut lv_obj_t) {
-        println!("[{}] {}", here!(), callee!());
+        println!("[{}] {} Created!", here!(), callee!());
 
         let bg_img = lv_image_create(parent);
         lv_image_set_src(bg_img, cstr!("A:/game2048/bg2048.png").as_ptr() as _);
@@ -166,17 +241,24 @@ impl ViewModel {
 
         let start_btn = LvObj::from(start_btn);
         {
-            clone!(self.state);
+            downgrade!(self.state);
             event::add(&start_btn, LV_EVENT_SHORT_CLICKED, move |_| {
-                state.set(State::Playing);
+                if let Some(state) = state.upgrade() {
+                    state.set(State::Playing);
+                }
             });
         }
 
-        self.page_changed(Page { root: LvObj::from(bg_img), effects: vec![] });
+        let bg_img = LvObj::from(bg_img);
+        event::add(&bg_img, LV_EVENT_DELETE, |_| {
+            println!("[{}] {} Deleted!", here!(), callee!());
+        });
+
+        self.page_changed(Page { root: bg_img, effects: vec![] });
     }
 
     unsafe fn show_playing(&self, parent: *mut lv_obj_t) {
-        println!("[{}] {}", here!(), callee!());
+        println!("[{}] {} Created!", here!(), callee!());
 
         let bg_img = lv_image_create(parent);
         lv_image_set_src(bg_img, cstr!("A:/game2048/bg2048.png").as_ptr() as _);
@@ -194,18 +276,21 @@ impl ViewModel {
         {
             random_fill(&self.game, &bg_img);
 
-            clone!(self.state, self.game, self.tasks);
+            downgrade!(self.state, self.game, self.tasks);
             clone!(bg_img);
             event::add(&bg_img.clone(), LV_EVENT_GESTURE, move |e| {
                 clone!(state, game, bg_img);
                 let gesture = lv_indev_get_gesture_dir(lv_indev_active());
                 let task = TaskRun(async move {
-                    let path = match gesture {
-                        LV_DIR_LEFT => game.borrow_mut().left(),
-                        LV_DIR_RIGHT => game.borrow_mut().right(),
-                        LV_DIR_TOP => game.borrow_mut().up(),
-                        LV_DIR_BOTTOM => game.borrow_mut().down(),
-                        _ => vec![],
+                    let path = match game.upgrade() {
+                        Some(game) => match gesture {
+                            LV_DIR_LEFT => game.borrow_mut().left(),
+                            LV_DIR_RIGHT => game.borrow_mut().right(),
+                            LV_DIR_TOP => game.borrow_mut().up(),
+                            LV_DIR_BOTTOM => game.borrow_mut().down(),
+                            _ => vec![],
+                        },
+                        None => return,
                     };
 
                     if path.is_empty() {
@@ -267,32 +352,44 @@ impl ViewModel {
 
                     lv_obj_add_flag(parent, LV_OBJ_FLAG_CLICKABLE);
 
-                    let score = game.borrow().get_score();
-                    lv_label_set_text(title, cstr!("Score: {score}").as_ptr());
+                    if let Some(game) = game.upgrade() {
+                        let score = game.borrow().get_score();
+                        lv_label_set_text(title, cstr!("Score: {score}").as_ptr());
 
-                    if game.borrow().is_it_win() {
-                        println!("{}", game.borrow());
-                        println!("2048!");
-                        println!("Game Over");
-                        state.set(State::Win);
-                    }
+                        if game.borrow().is_it_win() {
+                            println!("{}", game.borrow());
+                            println!("2048!");
+                            println!("Game Over");
+                            if let Some(state) = state.upgrade() {
+                                state.set(State::Win);
+                            }
+                        }
 
-                    random_fill(&game, &bg_img);
+                        random_fill(&game, &bg_img);
 
-                    if game.borrow().is_it_over() {
-                        println!("Game Over");
-                        state.set(State::GameOver);
+                        if game.borrow().is_it_over() {
+                            println!("Game Over");
+                            if let Some(state) = state.upgrade() {
+                                state.set(State::GameOver);
+                            }
+                        }
                     }
                 });
-                tasks.attach(task);
+                if let Some(tasks) = tasks.upgrade() {
+                    tasks.attach(task);
+                }
             });
         }
+
+        event::add(&bg_img, LV_EVENT_DELETE, |_| {
+            println!("[{}] {} Deleted!", here!(), callee!());
+        });
 
         self.page_changed(Page { root: bg_img, effects: vec![] });
     }
 
     unsafe fn show_gameover(&self, parent: *mut lv_obj_t) {
-        println!("[{}] {}", here!(), callee!());
+        println!("[{}] {} Created!", here!(), callee!());
 
         let bg_img = lv_image_create(parent);
         lv_image_set_src(bg_img, cstr!("A:/game2048/endbg.png").as_ptr() as _);
@@ -309,7 +406,7 @@ impl ViewModel {
 
         let score = self.game.borrow().get_score();
 
-        let fenshu = lv_label_create(parent);
+        let fenshu = lv_label_create(bg_img);
         lv_label_set_text(
             fenshu,
             cstr!(concat!(SCORE_LABEL_TEXT!(u), ":{}"), score).as_ptr(),
@@ -317,7 +414,7 @@ impl ViewModel {
         lv_obj_set_style_text_font(fenshu, self._lv_imgfont.as_ptr(), LV_PART_MAIN);
         lv_obj_align(fenshu, LV_ALIGN_TOP_MID, 0, 192);
 
-        let fenshu_max = lv_label_create(parent);
+        let fenshu_max = lv_label_create(bg_img);
         lv_label_set_text(
             fenshu_max,
             cstr!(concat!(SCORE_MAX_LABEL_TEXT!(u), ":{}"), score).as_ptr(),
@@ -327,13 +424,20 @@ impl ViewModel {
 
         let retry = LvObj::from(retry);
         {
-            clone!(self.state);
+            downgrade!(self.state);
             event::add(&retry, LV_EVENT_SHORT_CLICKED, move |_| {
-                state.set(State::Playing);
+                if let Some(state) = state.upgrade() {
+                    state.set(State::Playing);
+                }
             });
         }
 
-        self.page_changed(Page { root: LvObj::from(bg_img), effects: vec![] });
+        let bg_img = LvObj::from(bg_img);
+        event::add(&bg_img, LV_EVENT_DELETE, |_| {
+            println!("[{}] {} Deleted!", here!(), callee!());
+        });
+
+        self.page_changed(Page { root: bg_img, effects: vec![] });
     }
 }
 
