@@ -1,4 +1,6 @@
-#![allow(static_mut_refs)]
+// Internationalization support is provided by compiling and
+// generating the `_T(Lang, Text) -> &CStr` function via `build.rs`.
+include!(concat!(env!("OUT_DIR"), "/i18n.rs"));
 
 use std::{
     cell::{Cell, RefCell},
@@ -164,7 +166,7 @@ impl Drop for ViewModel {
         // This also requires modifying the `Drop` implementation of `Page`,
         // removing the `unreachable!()` assertion that prevents double freeing
         // when the `Page` is released.
-        // 
+        //
         // 4. All objects on the current page must be deleted immediately to release all closures.
         // (current implementation)
         // ```
@@ -217,7 +219,7 @@ impl ViewModel {
         lv_obj_center(bg_img);
 
         let title = lv_label_create(bg_img);
-        lv_label_set_text(title, cstr!("History Record").as_ptr());
+        lv_label_set_text(title, _T(Lang::en_US, Text::HistoryRecord).as_ptr());
         lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 25);
         lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
         lv_obj_set_style_text_font(title, &lv_font_montserrat_24 as _, LV_PART_MAIN);
@@ -234,7 +236,7 @@ impl ViewModel {
         lv_obj_set_style_bg_opa(start_btn, LV_OPA_30, LV_PART_MAIN);
         let start_lbl = lv_label_create(start_btn);
         lv_obj_center(start_lbl);
-        lv_label_set_text(start_lbl, cstr!("Click To Start").as_ptr() as _);
+        lv_label_set_text(start_lbl, _T(Lang::en_US, Text::ClickToStart).as_ptr());
         lv_obj_set_style_text_align(start_lbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         lv_obj_set_style_text_color(start_lbl, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
         lv_obj_set_style_text_font(start_lbl, &lv_font_montserrat_24 as _, LV_PART_MAIN);

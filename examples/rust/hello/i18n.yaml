@@ -1,0 +1,9 @@
+languages:
+  - en_US
+
+texts:
+  HistoryRecord:
+    en_US: History Record
+  
+  ClickToStart:
+    en_US: Click To Start

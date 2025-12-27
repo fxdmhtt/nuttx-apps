@@ -32,3 +32,10 @@ tokio = { version = "1", features = ["time", "macros", "rt"] }
 once_cell = "1.21.3"
 
 game2048 = { path = "./src/demos/game2048" }
+
+[build-dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = "2.0.111"
