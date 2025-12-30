@@ -30,7 +30,9 @@ MODULE = $(CONFIG_EXAMPLES_LVGLDEMO)
 # LVGL demo Example
 
 MAINSRC = lvgldemo.c
+ifeq ($(CONFIG_EXAMPLES_HELLO_RUST_CARGO),y)
 MAINSRC += $(shell find ${shell pwd}/binding -type f -name '*.c')
 MAINSRC += $(shell find ${shell pwd}/demos -type f -name '*.c')
+endif
 
 include $(APPDIR)/Application.mk

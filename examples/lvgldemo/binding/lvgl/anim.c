@@ -3,12 +3,12 @@
 #include <assert.h>
 
 #ifdef CONFIG_GRAPHICS_LVGL
-
 #ifdef main
 #undef main
 #endif
 #include <lvgl/lvgl.h>
 
+#ifdef CONFIG_EXAMPLES_HELLO_RUST_CARGO
 static void rust_wake_and_poll(lv_anim_t *a)
 {
     assert(a != NULL);
@@ -19,6 +19,7 @@ static void rust_wake_and_poll(lv_anim_t *a)
     void rust_executor_wake(void);
     rust_executor_wake();
 }
+#endif /* CONFIG_EXAMPLES_HELLO_RUST_CARGO */
 
 lv_anim_t *lv_anim_new(void)
 {
@@ -35,6 +36,7 @@ void lv_anim_drop(lv_anim_t *a)
     free((void *)a);
 }
 
+#ifdef CONFIG_EXAMPLES_HELLO_RUST_CARGO
 lv_anim_t *lv_anim_pending(lv_anim_t *a, void *state)
 {
     assert(a != NULL);
@@ -44,6 +46,7 @@ lv_anim_t *lv_anim_pending(lv_anim_t *a, void *state)
     lv_anim_set_completed_cb(a, (lv_anim_completed_cb_t)rust_wake_and_poll);
     return lv_anim_start(a);
 }
+#endif /* CONFIG_EXAMPLES_HELLO_RUST_CARGO */
 
 lv_anim_t *lv_anim_query(lv_anim_t *a)
 {
@@ -57,4 +60,4 @@ bool lv_anim_cancel(lv_anim_t *a)
     // lv_anim_t *a = lv_anim_query(a);
     return lv_anim_delete(a->var, a->exec_cb);
 }
-#endif
+#endif /* CONFIG_GRAPHICS_LVGL */

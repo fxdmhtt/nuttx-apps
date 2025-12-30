@@ -1,5 +1,6 @@
 #include <nuttx/config.h>
 
+#ifdef CONFIG_EXAMPLES_HELLO_RUST_CARGO
 #ifdef main
 #undef main
 #endif
@@ -292,3 +293,4 @@ void frp_demo_main(void)
 {
     create_launcher();
 }
+#endif /* CONFIG_EXAMPLES_HELLO_RUST_CARGO */

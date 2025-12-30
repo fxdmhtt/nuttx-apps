@@ -1,5 +1,6 @@
 #include <nuttx/config.h>
 
+#ifdef CONFIG_EXAMPLES_HELLO_RUST_CARGO
 // #include <stdio.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
@@ -66,3 +67,4 @@ void game2048_main(void)
     lv_label_set_text(lbl, "Start Game2048 demo");
     lv_obj_add_event_cb(btn, game2048_launcher, LV_EVENT_SHORT_CLICKED, lbl);
 }
+#endif /* CONFIG_EXAMPLES_HELLO_RUST_CARGO */
