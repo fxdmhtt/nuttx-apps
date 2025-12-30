@@ -39,6 +39,10 @@
 #include <uv.h>
 #endif
 
+#ifdef CONFIG_INTERPRETERS_WAMR
+#include "wasm_export.h"
+#endif /* CONFIG_INTERPRETERS_WAMR */
+
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
@@ -125,6 +129,23 @@ static void lv_nuttx_uv_loop(uv_loop_t *loop, lv_nuttx_result_t *result)
   void game2048_main(void);
   game2048_main();
 #endif /* CONFIG_EXAMPLES_HELLO_RUST_CARGO */
+
+#ifdef CONFIG_INTERPRETERS_WAMR
+  RuntimeInitArgs init_args;
+  memset(&init_args, 0, sizeof(init_args));
+  init_args.mem_alloc_type = Alloc_With_System_Allocator;
+  bool wamr_custom_init(RuntimeInitArgs * init_args);
+  if (!wamr_custom_init(&init_args))
+  {
+    printf("WAMR init failed\n");
+    return;
+  }
+
+  void wasm_demo_main(void);
+  wasm_demo_main();
+
+  wasm_runtime_destroy();
+#endif /* CONFIG_INTERPRETERS_WAMR */
 
   data = lv_nuttx_uv_init(&uv_info);
   uv_run(loop, UV_RUN_DEFAULT);
