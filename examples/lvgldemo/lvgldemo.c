@@ -27,7 +27,11 @@
 #include <nuttx/config.h>
 #include <unistd.h>
 #include <sys/boardctl.h>
+#ifdef CONFIG_EXAMPLES_HELLO_RUST_CARGO
+#ifndef __OPTIMIZE__
 #include <syslog.h>
+#endif
+#endif /* CONFIG_EXAMPLES_HELLO_RUST_CARGO */
 
 #include <lvgl/lvgl.h>
 #include <lvgl/demos/lv_demos.h>
@@ -69,6 +73,8 @@
  ****************************************************************************/
 
 #ifdef CONFIG_LV_USE_NUTTX_LIBUV
+
+#ifdef CONFIG_EXAMPLES_HELLO_RUST_CARGO
 static uv_async_t async;
 
 static void _rust_executor_drive(uv_async_t *handle)
@@ -87,6 +93,7 @@ void rust_executor_wake(void)
   }
 #endif
 }
+#endif /* CONFIG_EXAMPLES_HELLO_RUST_CARGO */
 
 static void lv_nuttx_uv_loop(uv_loop_t *loop, lv_nuttx_result_t *result)
 {
@@ -103,12 +110,14 @@ static void lv_nuttx_uv_loop(uv_loop_t *loop, lv_nuttx_result_t *result)
   uv_info.uindev = result->utouch_indev;
 #endif
 
+#ifdef CONFIG_EXAMPLES_HELLO_RUST_CARGO
   uv_async_init(loop, &async, _rust_executor_drive);
   void demo_async_executor(uv_loop_t *);
   demo_async_executor(loop);
 
   void event_demo_main(void);
   event_demo_main();
+#endif /* CONFIG_EXAMPLES_HELLO_RUST_CARGO */
 
   data = lv_nuttx_uv_init(&uv_info);
   uv_run(loop, UV_RUN_DEFAULT);

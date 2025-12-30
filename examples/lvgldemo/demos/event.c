@@ -1,5 +1,6 @@
 #include <nuttx/config.h>
 
+#ifdef CONFIG_EXAMPLES_HELLO_RUST_CARGO
 #ifdef main
 #undef main
 #endif
@@ -15,3 +16,4 @@ void event_demo_main(void) {
     void button_long_pressed_event_demo(lv_event_t *);
     lv_obj_add_event_cb(btn, button_long_pressed_event_demo, LV_EVENT_LONG_PRESSED, NULL);
 }
+#endif /* CONFIG_EXAMPLES_HELLO_RUST_CARGO */
