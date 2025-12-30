@@ -29,6 +29,10 @@ MODULE = $(CONFIG_EXAMPLES_LVGLDEMO)
 
 # LVGL demo Example
 
+ifeq ($(CONFIG_EXAMPLES_HELLO_RUST_CARGO),y)
 MAINSRC = lvgldemo.c $(wildcard binding/libuv/*.c)
+else
+MAINSRC = lvgldemo.c
+endif
 
 include $(APPDIR)/Application.mk

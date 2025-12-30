@@ -6,6 +6,7 @@
 #ifdef CONFIG_LV_USE_NUTTX_LIBUV
 #include "uv.h"
 
+#ifdef CONFIG_EXAMPLES_HELLO_RUST_CARGO
 static void rust_wake_and_poll(uv_timer_t *handle)
 {
     assert(handle != NULL);
@@ -27,6 +28,7 @@ static void rust_wake_and_poll(uv_timer_t *handle)
     void rust_executor_wake(void);
     rust_executor_wake();
 }
+#endif /* CONFIG_EXAMPLES_HELLO_RUST_CARGO */
 
 uv_timer_t *uv_timer_new(uv_loop_t *loop)
 {
@@ -49,6 +51,7 @@ void uv_timer_drop(uv_timer_t *handle)
     uv_close((uv_handle_t *)handle, (void (*)(uv_handle_t *handle))free);
 }
 
+#ifdef CONFIG_EXAMPLES_HELLO_RUST_CARGO
 void uv_timer_pending(uv_timer_t *handle, uint64_t timeout, void *state)
 {
     assert(handle != NULL);
@@ -57,4 +60,6 @@ void uv_timer_pending(uv_timer_t *handle, uint64_t timeout, void *state)
     uv_handle_set_data((uv_handle_t *)handle, state);
     uv_timer_start(handle, rust_wake_and_poll, timeout, 0);
 }
-#endif
+#endif /* CONFIG_EXAMPLES_HELLO_RUST_CARGO */
+
+#endif /* CONFIG_LV_USE_NUTTX_LIBUV */
