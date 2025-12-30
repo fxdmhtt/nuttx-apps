@@ -98,25 +98,6 @@ impl LvAnim {
 }
 
 extern "C" {
-    fn lv_anim_set_var(a: *mut lv_anim_t, var: *mut c_void);
-    fn lv_anim_set_exec_cb(a: *mut lv_anim_t, exec_cb: lv_anim_exec_xcb_t);
-    fn lv_anim_set_duration(a: *mut lv_anim_t, duration: u32);
-    fn lv_anim_set_delay(a: *mut lv_anim_t, delay: u32);
-    fn lv_anim_set_values(a: *mut lv_anim_t, start: i32, end: i32);
-    fn lv_anim_set_custom_exec_cb(a: *mut lv_anim_t, exec_cb: lv_anim_custom_exec_cb_t);
-    fn lv_anim_set_path_cb(a: *mut lv_anim_t, path_cb: lv_anim_path_cb_t);
-    fn lv_anim_set_start_cb(a: *mut lv_anim_t, start_cb: lv_anim_start_cb_t);
-    fn lv_anim_set_get_value_cb(a: *mut lv_anim_t, get_value_cb: lv_anim_get_value_cb_t);
-    fn lv_anim_set_completed_cb(a: *mut lv_anim_t, completed_cb: lv_anim_completed_cb_t);
-    fn lv_anim_set_deleted_cb(a: *mut lv_anim_t, deleted_cb: lv_anim_deleted_cb_t);
-    fn lv_anim_set_playback_duration(a: *mut lv_anim_t, duration: u32);
-    fn lv_anim_set_playback_delay(a: *mut lv_anim_t, delay: u32);
-    fn lv_anim_set_repeat_count(a: *mut lv_anim_t, cnt: u16);
-    fn lv_anim_set_repeat_delay(a: *mut lv_anim_t, delay: u32);
-    fn lv_anim_set_early_apply(a: *mut lv_anim_t, en: bool);
-}
-
-extern "C" {
     fn lv_anim_new() -> *mut lv_anim_t;
     fn lv_anim_drop(a: *mut lv_anim_t);
     fn lv_anim_pending(a: *mut lv_anim_t, state: *mut c_void) -> *mut lv_anim_t;

@@ -19,10 +19,6 @@ use crate::{
 };
 
 extern "C" {
-    fn rust_executor_wake();
-}
-
-extern "C" {
     static mut _radio_cont: *mut lv_obj_t;
     static mut _img: *mut lv_obj_t;
     static mut _img_label: *mut lv_obj_t;
@@ -212,7 +208,7 @@ fn cts_cancel_and_renew(cts: &RefCell<CancellationTokenSource>) {
     let old = cts.replace(CancellationTokenSource::new());
     debug_assert!(!old.is_cancelled());
     old.cancel();
-    unsafe { rust_executor_wake() }; // necessary!
+    rust_executor_drive(); // necessary!
 }
 
 async fn list_item_fade(obj: &LvObjHandle, cnt: usize) -> Result<(), AppError> {

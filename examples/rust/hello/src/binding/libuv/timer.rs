@@ -5,27 +5,24 @@ use std::{
 
 use super::uv_loop_t;
 
-#[allow(dead_code)]
-extern "C" {
-    static uv_timer_size: usize;
-    static uv_timer_align: usize;
-}
+// extern "C" {
+//     static uv_timer_size: usize;
+//     static uv_timer_align: usize;
+// }
 
-#[allow(dead_code)]
-#[cfg(all(
-    target_arch = "x86_64",
-    target_vendor = "unknown",
-    any(target_os = "nuttx", target_os = "linux")
-))]
-const UV_TIMER_SIZE: usize = 152;
+// #[cfg(all(
+//     target_arch = "x86_64",
+//     target_vendor = "unknown",
+//     any(target_os = "nuttx", target_os = "linux")
+// ))]
+// const UV_TIMER_SIZE: usize = 152;
 
-#[allow(dead_code)]
-#[cfg(all(
-    target_arch = "x86_64",
-    target_vendor = "unknown",
-    any(target_os = "nuttx", target_os = "linux")
-))]
-const UV_TIMER_ALIGN: usize = 8;
+// #[cfg(all(
+//     target_arch = "x86_64",
+//     target_vendor = "unknown",
+//     any(target_os = "nuttx", target_os = "linux")
+// ))]
+// const UV_TIMER_ALIGN: usize = 8;
 
 #[allow(non_camel_case_types)]
 type uv_timer_t = c_void;

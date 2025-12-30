@@ -19,7 +19,7 @@ pub fn executor() -> &'static mut PriorityExecutor {
 }
 
 #[no_mangle]
-extern "C" fn rust_executor_drive() {
+pub extern "C" fn rust_executor_drive() {
     executor().try_tick_all()
 }
 
