@@ -7,8 +7,8 @@
 #include "wasm_export.h"
 
 #include "wasm.hex"
-#define wasm_buf __target_wasm32_unknown_unknown_release_demo_wasm_aot
-#define wasm_size __target_wasm32_unknown_unknown_release_demo_wasm_aot_len
+#define wasm_buf __target_wasm32_wasip1_release_demo_wasm_aot
+#define wasm_size __target_wasm32_wasip1_release_demo_wasm_aot_len
 
 void wasm_demo_main(void)
 {

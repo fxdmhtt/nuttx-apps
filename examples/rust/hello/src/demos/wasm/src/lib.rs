@@ -1,8 +1,8 @@
-use std::ffi::{c_char, CString};
+use std::ffi::c_char;
 
 #[no_mangle]
 extern "C" fn demo_wasm_hello() {
-    println!("Hello World from WAMR module written in Rust!");
+    println!("[WASM] Hello World from WAMR module written in Rust!");
     unsafe { hello() };
 
     let x = (1..=9)
@@ -13,12 +13,13 @@ extern "C" fn demo_wasm_hello() {
         .into_iter()
         .reduce(|acc, x| acc * 10 + x)
         .unwrap();
-    let s = CString::new(format!("{x}")).unwrap();
-    unsafe { hello_printf(s.as_ptr()) };
+    if format!("{x}") == "123456789" {
+        unsafe { println(c"Hello World written in Rust from WAMR module!".as_ptr()) };
+    }
 }
 
 #[link(wasm_import_module = "hello")]
 extern "C" {
     fn hello();
-    fn hello_printf(s: *const c_char);
+    fn println(s: *const c_char);
 }
