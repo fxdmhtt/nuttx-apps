@@ -35,6 +35,7 @@
  ****************************************************************************/
 
 static void hello_wrapper(wasm_exec_env_t env);
+static void hello_printf_wrapper(wasm_exec_env_t env, char *s);
 
 /****************************************************************************
  * Private Data
@@ -42,7 +43,8 @@ static void hello_wrapper(wasm_exec_env_t env);
 
 static NativeSymbol g_hello_symbols[] =
 {
-  EXPORT_WASM_API_WITH_SIG2(hello, "()")
+  EXPORT_WASM_API_WITH_SIG2(hello, "()"),
+  EXPORT_WASM_API_WITH_SIG2(hello_printf, "($)")
 };
 
 /****************************************************************************
@@ -56,6 +58,15 @@ static NativeSymbol g_hello_symbols[] =
 static void hello_wrapper(wasm_exec_env_t env)
 {
   printf("Hello World from WAMR module!\n");
+}
+
+/****************************************************************************
+ * Name: hello_printf_wrapper
+ ****************************************************************************/
+
+static void hello_printf_wrapper(wasm_exec_env_t env, char *s)
+{
+  printf("[WASM] %s\n", s);
 }
 
 /****************************************************************************
